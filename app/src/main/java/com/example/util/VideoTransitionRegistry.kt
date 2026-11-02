@@ -473,7 +473,7 @@ object VideoTransitionRegistry {
                     visualBehavior = "Applies high-impact $name transition with smooth motion trajectory.",
                     recommendedDurationSec = 0.5 + ((i % 4) * 0.1),
                     motionType = "Cinematic ${template.second} Motion",
-                    bestSuitedFor = "Viral 9:16 Shorts, Tech, Cyberpunk & YouTube videos",
+                    bestSuitedFor = "Vertical short videos, tech, and cyberpunk scenes",
                     xfadeName = mapCodeToXfade(code)
                 )
             )

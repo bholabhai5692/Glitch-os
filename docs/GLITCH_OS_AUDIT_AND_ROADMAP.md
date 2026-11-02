@@ -57,6 +57,8 @@ Provider availability, credentials, scopes, Android version, and user-granted pe
 | Finding | Resolution in this pass |
 | --- | --- |
 | Scene rendering could substitute Picsum/procedural/previous-frame images for absent or invalid input. | Removed the synthetic image fallbacks; missing or undecodable scene inputs fail explicitly. |
+| OTP diagnostics substituted fictional log entries, source snippets, and network calls when real input was unavailable. | Removed all sample inputs and the demo tool listing; diagnostics now inspect only supplied real data and explain when input is missing. |
+| An unused explorer view model exposed a simulated-data toggle while depending on missing repository/model types; its tool registry also advertised unsupported tools. | Removed the unreferenced, incomplete feature code rather than presenting nonexistent device scans as working functionality. |
 | Trend Pilot displayed canned topics and made-up growth velocities. | Replaced with the live YouTube most-popular chart and observed video fields; failures are surfaced. |
 | Create Video auto-filled canned category topics and hid provider failures behind template scripts. | Replaced topic suggestions with the live chart, requires a user/chart title, and reports provider failures without silently substituting scripts. |
 | Channel diagnostics and performance screens could present fabricated metrics or unsupported CTR/retention diagnoses. | Removed fabricated diagnostic defaults and unsupported conclusions; missing metrics are identified as unavailable. |

@@ -18,7 +18,7 @@ object AppIdentifier {
 
             val appInfo = pkgInfo.applicationInfo
             val targetSdk = appInfo?.targetSdkVersion ?: 0
-            val vName = pkgInfo.versionName ?: "1.0"
+            val vName = pkgInfo.versionName
             val vCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pkgInfo.longVersionCode else @Suppress("DEPRECATION") pkgInfo.versionCode.toLong()
 
             return AppDiagnosticInfo(
@@ -26,7 +26,17 @@ object AppIdentifier {
                 versionName = vName,
                 versionCode = vCode,
                 targetSdk = targetSdk,
-                status = "AVAILABLE"
+                status = "AVAILABLE",
+                message = if (appInfo == null) "App details are incomplete; Android did not provide application metadata." else null
+            )
+        } catch (e: PackageManager.NameNotFoundException) {
+            return AppDiagnosticInfo(
+                packageName = pkgName,
+                versionName = null,
+                versionCode = 0,
+                targetSdk = 0,
+                status = "APP_NOT_FOUND",
+                message = "App not found. Check the package name and Android package visibility."
             )
         } catch (e: Exception) {
             return AppDiagnosticInfo(
@@ -34,7 +44,8 @@ object AppIdentifier {
                 versionName = null,
                 versionCode = 0,
                 targetSdk = 0,
-                status = "ERROR"
+                status = "ERROR",
+                message = "Could not read app details. Confirm the app is installed and visible to Android."
             )
         }
     }

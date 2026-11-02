@@ -56,9 +56,7 @@ class VideoPipelineTest {
               "summary":"An introduction to planning a small urban garden.",
               "description":"A draft overview of urban gardening that should be checked against the finished video.",
               "story":"The video introduces space planning, containers, and plant care.",
-              "narration":"$narration",
-              "tags":["urban gardening","container gardening"],
-              "hashtags":["#gardening"]
+              "narration":"$narration"
             }
             """.trimIndent(),
             VideoRequest(topic = "Urban gardening", category = "Education", language = "English")
@@ -66,7 +64,10 @@ class VideoPipelineTest {
 
         org.junit.Assert.assertEquals(narration, result.narration)
         org.junit.Assert.assertEquals("Urban gardening in small spaces", result.title)
-        org.junit.Assert.assertTrue(result.tags.contains("urban gardening"))
+        org.junit.Assert.assertEquals(
+            "A draft overview of urban gardening that should be checked against the finished video.",
+            result.description
+        )
     }
 
     @Test
@@ -83,7 +84,8 @@ class VideoPipelineTest {
         )
 
         org.junit.Assert.assertEquals(narration, result.description)
-        org.junit.Assert.assertEquals(listOf("Urban gardening: user draft"), result.titleVariations)
+        org.junit.Assert.assertEquals("Urban gardening: user draft", result.title)
+        org.junit.Assert.assertEquals(narration.take(150), result.summary)
         org.junit.Assert.assertFalse(result.description.contains("#Shorts"))
         org.junit.Assert.assertFalse(result.description.contains("#Viral"))
     }

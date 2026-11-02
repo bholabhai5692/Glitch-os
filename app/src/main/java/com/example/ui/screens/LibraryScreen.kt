@@ -8,12 +8,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayCircleFilled
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,7 +30,6 @@ import com.example.ui.components.GlitchCard
 import com.example.ui.components.StatusBadge
 import com.example.ui.theme.*
 import com.example.ui.viewmodels.MainViewModel
-import com.example.util.SocialShareHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -202,7 +199,6 @@ fun LibraryProjectCard(
                 }
             }
 
-            val context = LocalContext.current
             var showMenu by remember { mutableStateOf(false) }
 
             Box {
@@ -222,37 +218,6 @@ fun LibraryProjectCard(
                     onDismissRequest = { showMenu = false },
                     modifier = Modifier.background(DarkSurfaceElevated)
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Publish to Instagram", color = TextPrimary) },
-                        leadingIcon = {
-                            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = NeonPink)
-                        },
-                        onClick = {
-                            showMenu = false
-                            SocialShareHelper.publishToInstagram(
-                                context = context,
-                                videoPath = project.video,
-                                title = project.title.ifBlank { project.topic },
-                                caption = "Check out this AI generated video!"
-                            )
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Publish to Facebook", color = TextPrimary) },
-                        leadingIcon = {
-                            Icon(Icons.Default.Public, contentDescription = null, tint = CyberCyan)
-                        },
-                        onClick = {
-                            showMenu = false
-                            SocialShareHelper.publishToFacebook(
-                                context = context,
-                                videoPath = project.video,
-                                title = project.title.ifBlank { project.topic },
-                                caption = "Check out this AI generated video!"
-                            )
-                        }
-                    )
-                    Divider(color = DarkBorder, thickness = 0.5.dp)
                     DropdownMenuItem(
                         text = { Text("Delete Video", color = ErrorRed) },
                         leadingIcon = {

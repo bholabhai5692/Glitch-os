@@ -44,6 +44,8 @@ fun AutoTypePanelView(
 ) {
     val theme = stateHolder.currentTheme
     var currentTab by remember { mutableStateOf(AutoToolTab.PIN_SEQUENCE) }
+    val isAutoTypeLocked = stateHolder.autoTypeState == AutoTypeState.RUNNING ||
+        stateHolder.autoTypeState == AutoTypeState.STOPPING
 
     Column(
         modifier = modifier
@@ -64,13 +66,13 @@ fun AutoTypePanelView(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                AutoTabChip("🔢 PIN Sequence", currentTab == AutoToolTab.PIN_SEQUENCE, { currentTab = AutoToolTab.PIN_SEQUENCE }, theme)
-                AutoTabChip("🤖 Smart Macros", currentTab == AutoToolTab.SMART_MACROS, { currentTab = AutoToolTab.SMART_MACROS }, theme)
-                AutoTabChip("📈 Counter Engine", currentTab == AutoToolTab.CUSTOM_COUNTER, { currentTab = AutoToolTab.CUSTOM_COUNTER }, theme)
-                AutoTabChip("✨ Text Stylizer", currentTab == AutoToolTab.TEXT_TRANSFORMER, { currentTab = AutoToolTab.TEXT_TRANSFORMER }, theme)
-                AutoTabChip("⚡ Turbo Engine", currentTab == AutoToolTab.TURBO_ARCHITECTURE, { currentTab = AutoToolTab.TURBO_ARCHITECTURE }, theme)
-                AutoTabChip("🔁 Repeater", currentTab == AutoToolTab.TEXT_REPEATER, { currentTab = AutoToolTab.TEXT_REPEATER }, theme)
-                AutoTabChip("🎲 Auth & Data", currentTab == AutoToolTab.DATA_GENERATOR, { currentTab = AutoToolTab.DATA_GENERATOR }, theme)
+                AutoTabChip("🔢 PIN Sequence", currentTab == AutoToolTab.PIN_SEQUENCE, { currentTab = AutoToolTab.PIN_SEQUENCE }, theme, !isAutoTypeLocked)
+                AutoTabChip("🤖 Smart Macros", currentTab == AutoToolTab.SMART_MACROS, { currentTab = AutoToolTab.SMART_MACROS }, theme, !isAutoTypeLocked)
+                AutoTabChip("📈 Counter Engine", currentTab == AutoToolTab.CUSTOM_COUNTER, { currentTab = AutoToolTab.CUSTOM_COUNTER }, theme, !isAutoTypeLocked)
+                AutoTabChip("✨ Text Stylizer", currentTab == AutoToolTab.TEXT_TRANSFORMER, { currentTab = AutoToolTab.TEXT_TRANSFORMER }, theme, !isAutoTypeLocked)
+                AutoTabChip("⚡ Turbo Engine", currentTab == AutoToolTab.TURBO_ARCHITECTURE, { currentTab = AutoToolTab.TURBO_ARCHITECTURE }, theme, !isAutoTypeLocked)
+                AutoTabChip("🔁 Repeater", currentTab == AutoToolTab.TEXT_REPEATER, { currentTab = AutoToolTab.TEXT_REPEATER }, theme, !isAutoTypeLocked)
+                AutoTabChip("🎲 Auth & Data", currentTab == AutoToolTab.DATA_GENERATOR, { currentTab = AutoToolTab.DATA_GENERATOR }, theme, !isAutoTypeLocked)
             }
 
             Row(
@@ -132,12 +134,13 @@ private fun AutoTabChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    theme: KeyboardThemeColors
+    theme: KeyboardThemeColors,
+    enabled: Boolean
 ) {
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = if (selected) theme.primaryAccent else theme.actionKeyBackground,
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier.clickable(enabled = enabled) { onClick() }
     ) {
         Text(
             text = label,

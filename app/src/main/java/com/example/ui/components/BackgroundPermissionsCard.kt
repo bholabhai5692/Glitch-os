@@ -101,7 +101,7 @@ fun BackgroundPermissionsCard(
                             text = if (permissionStatus.isAllGranted) {
                                 "All background services & permissions active"
                             } else {
-                                "Action recommended for 24/7 continuous background running"
+                                "Battery settings may interrupt video rendering in the background"
                             },
                             fontSize = 11.sp,
                             color = TextSecondary
@@ -128,7 +128,7 @@ fun BackgroundPermissionsCard(
                     // 1. Foreground Service & Wake Lock
                     PermissionStatusRow(
                         title = "1. Foreground Service & CPU Wake Lock",
-                        description = "Keeps CPU awake during video rendering & uploads.",
+                        description = "Keeps CPU awake during video rendering.",
                         isGranted = true,
                         actionLabel = "Declared in Manifest",
                         onAction = {}
@@ -158,28 +158,6 @@ fun BackgroundPermissionsCard(
                         }
                     )
 
-                    // 4. Auto-Restart on Boot
-                    PermissionStatusRow(
-                        title = "4. Auto-Restart on Boot",
-                        description = "Automatically resumes video schedule when phone restarts.",
-                        isGranted = true,
-                        actionLabel = "Active",
-                        onAction = {}
-                    )
-
-                    // 5. Exact Alarms & Timing
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        PermissionStatusRow(
-                            title = "5. Exact Alarms & Schedule Triggers",
-                            description = "Ensures exact timing precision for auto-publishing.",
-                            isGranted = permissionStatus.canScheduleExactAlarm,
-                            actionLabel = if (permissionStatus.canScheduleExactAlarm) "Allowed" else "Grant Access",
-                            onAction = {
-                                BackgroundPermissionHelper.requestExactAlarmPermission(context)
-                            }
-                        )
-                    }
-
                     // Quick action buttons
                     if (!permissionStatus.isAllGranted) {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -193,8 +171,6 @@ fun BackgroundPermissionsCard(
                                         notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                                     } else if (!permissionStatus.isBatteryOptimizationIgnored) {
                                         BackgroundPermissionHelper.requestBatteryOptimizationExemption(context)
-                                    } else if (!permissionStatus.canScheduleExactAlarm) {
-                                        BackgroundPermissionHelper.requestExactAlarmPermission(context)
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = CyberCyan),

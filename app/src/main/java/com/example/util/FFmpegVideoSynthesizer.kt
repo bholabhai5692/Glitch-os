@@ -23,8 +23,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.view.Surface
-import com.example.data.local.AppDatabase
-import com.example.data.local.VideoProjectEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -33,7 +31,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.ByteBuffer
 import java.util.Locale
-import java.util.UUID
 
 /**
  * Data model for a single scene in the video synthesis pipeline.
@@ -403,24 +400,6 @@ object FFmpegVideoSynthesizer {
 
         // Copy to Public Movies directory and register with MediaStore
         saveToPublicGallery(context, finalOutputFile)
-
-        // Save project record to local Room database
-        try {
-            val db = AppDatabase.getDatabase(context)
-            val totalDurationMs = config.scenes.sumOf { it.durationMs }
-            val project = VideoProjectEntity(
-                id = UUID.randomUUID().toString(),
-                title = config.title,
-                videoPath = finalOutputFile.absolutePath,
-                startMs = 0L,
-                endMs = totalDurationMs,
-                durationMs = totalDurationMs,
-                lastEdited = System.currentTimeMillis()
-            )
-            db.videoProjectDao().insertProject(project)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to save project to Room: ${e.message}")
-        }
 
         onProgress(1.0f, "🎉 9:16 Viral Shorts Video Complete! (${finalOutputFile.name})")
         Result.success(finalOutputFile)

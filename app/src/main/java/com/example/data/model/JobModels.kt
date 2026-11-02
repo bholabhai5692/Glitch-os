@@ -11,7 +11,7 @@ data class CreateJobRequest(
     @Json(name = "durationSec") val durationSec: Int = 60,
     @Json(name = "style") val style: String = "Cinematic",
     @Json(name = "aspectRatio") val aspectRatio: String = "9:16",
-    @Json(name = "platform") val platform: String = "YouTube Shorts",
+    @Json(name = "platform") val platform: String = "Vertical short video",
     @Json(name = "audience") val audience: String = "General",
     @Json(name = "instructions") val instructions: String = "",
     @Json(name = "voiceName") val voiceName: String = "hi-IN-MadhurNeural",
@@ -122,14 +122,9 @@ data class StoryContent(
     @Json(name = "topicAngle") val topicAngle: String? = null,
     @Json(name = "summary100") val summary100: String? = null,
     @Json(name = "description500") val description500: String? = null,
-    @Json(name = "tags") val tags: List<String>? = null,
-    @Json(name = "hashtags") val hashtags: List<String>? = null,
     @Json(name = "story") val story: String? = null,
     @Json(name = "narration") val narration: String? = null,
-    @Json(name = "titleVariations") val titleVariations: List<String>? = null,
     @Json(name = "selectedTitle") val selectedTitle: String? = null,
-    @Json(name = "seoScore") val seoScore: Int? = null,
-    @Json(name = "richDescription") val richDescription: String? = null,
     @Json(name = "productionSettings") val productionSettings: ProjectProductionSettings? = null
 )
 

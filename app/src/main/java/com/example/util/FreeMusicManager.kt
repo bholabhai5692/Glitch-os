@@ -24,7 +24,7 @@ import kotlin.math.sin
 
 /**
  * Free Copyright-Free Music & Soundscape Manager.
- * Provides curated 100% royalty-free background music tracks for YouTube Shorts,
+ * Provides curated 100% royalty-free background music tracks for short videos,
  * TikTok, and Instagram Reels monetization.
  * Includes a built-in PCM Audio Synthesizer to generate rich ambient/rhythmic
  * tracks offline, as well as support for Pixabay / Free Music Archive audio streams.

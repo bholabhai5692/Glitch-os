@@ -175,6 +175,18 @@ fun KeyboardSettingsPanelView(
                     }
                 }
 
+                item {
+                    SettingsCard(theme = theme) {
+                        SettingToggleRow(
+                            title = "Online Suggestions",
+                            subtitle = "Send typed word prefixes to Google for extra suggestions",
+                            isChecked = stateHolder.onlineSuggestionsEnabled,
+                            onCheckedChange = stateHolder::updateOnlineSuggestionsEnabled,
+                            theme = theme
+                        )
+                    }
+                }
+
                 // Haptic Feedback
                 item {
                     SettingsCard(theme = theme) {

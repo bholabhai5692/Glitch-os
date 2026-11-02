@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -27,13 +26,11 @@ data class LivePipelineProgress(
     val statusMessage: String = "",
     val progressPercent: Int = 0,
     val category: String? = null,
-    val categoryId: String? = null,
     val language: String? = null,
     val durationSec: Int? = null,
     val stage: String = "",
     val lastUpdatedMs: Long = 0L,
     val isCompleted: Boolean = false,
-    val youtubeUrl: String? = null,
     val error: String? = null
 )
 
@@ -44,17 +41,14 @@ data class NotificationHistoryItem(
     val title: String,
     val message: String,
     val category: String? = null,
-    val categoryId: String? = null,
     val language: String? = null,
-    val durationSec: Int? = null,
-    val youtubeUrl: String? = null,
-    val playlistName: String? = null
+    val durationSec: Int? = null
 )
 
 object PipelineNotificationManager {
     private const val CHANNEL_ID = "glitch_video_pipeline_channel"
     private const val CHANNEL_NAME = "GLITCH AI Video Pipeline"
-    private const val CHANNEL_DESC = "Live progress and alerts for AI Video Generation & YouTube Auto-Publish"
+    private const val CHANNEL_DESC = "Video generation progress and alerts"
 
     private const val PREFS_NAME = "glitch_notification_history_prefs"
     private const val KEY_HISTORY = "key_notification_history_json"
@@ -78,11 +72,8 @@ object PipelineNotificationManager {
                 put("title", item.title)
                 put("message", item.message)
                 put("category", item.category ?: "")
-                put("categoryId", item.categoryId ?: "")
                 put("language", item.language ?: "")
                 put("durationSec", item.durationSec ?: 0)
-                put("youtubeUrl", item.youtubeUrl ?: "")
-                put("playlistName", item.playlistName ?: "")
             }
 
             // Insert at top, keep max 50 items
@@ -115,11 +106,8 @@ object PipelineNotificationManager {
                         title = obj.optString("title"),
                         message = obj.optString("message"),
                         category = obj.optString("category").ifBlank { null },
-                        categoryId = obj.optString("categoryId").ifBlank { null },
                         language = obj.optString("language").ifBlank { null },
-                        durationSec = if (obj.optInt("durationSec") > 0) obj.optInt("durationSec") else null,
-                        youtubeUrl = obj.optString("youtubeUrl").ifBlank { null },
-                        playlistName = obj.optString("playlistName").ifBlank { null }
+                        durationSec = if (obj.optInt("durationSec") > 0) obj.optInt("durationSec") else null
                     )
                 )
             }
@@ -151,50 +139,12 @@ object PipelineNotificationManager {
         }
     }
 
-    fun createForegroundInfo(
-        context: Context,
-        title: String,
-        statusMessage: String
-    ): androidx.work.ForegroundInfo {
-        createNotificationChannel(context)
-
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("⚡ $title")
-            .setContentText(statusMessage)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setContentIntent(pendingIntent)
-
-        val notification = builder.build()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            androidx.work.ForegroundInfo(
-                PROGRESS_NOTIFICATION_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            androidx.work.ForegroundInfo(PROGRESS_NOTIFICATION_ID, notification)
-        }
-    }
-
     fun showProgressNotification(
         context: Context,
         title: String,
         statusMessage: String,
         progressPercent: Int,
         category: String? = null,
-        categoryId: String? = null,
         language: String? = null,
         durationSec: Int? = null
     ) {
@@ -224,16 +174,14 @@ object PipelineNotificationManager {
         val expandedText = buildString {
             append("⚡ Glitch Engine: $statusMessage\n")
             if (!category.isNullOrBlank()) {
-                append("📁 Niche: $category")
-                if (!categoryId.isNullOrBlank()) append(" (ID: $categoryId)")
-                append("\n")
+                append("📁 Category: $category\n")
             }
             if (!language.isNullOrBlank() || durationSec != null) {
                 val langStr = language ?: "Standard"
                 val durStr = if (durationSec != null) "${durationSec}s" else "Shorts"
                 append("🎙 Voice: $langStr | ⏱ Duration: $durStr\n")
             }
-            append("🚀 GLITCH OS Autonomous Studio Active [$progressPercent%]")
+            append("Video generation in progress [$progressPercent%]")
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -264,7 +212,6 @@ object PipelineNotificationManager {
             statusMessage = statusMessage,
             progressPercent = progressPercent,
             category = category,
-            categoryId = categoryId,
             language = language,
             durationSec = durationSec,
             stage = statusMessage,
@@ -276,14 +223,9 @@ object PipelineNotificationManager {
     fun showCompletionNotification(
         context: Context,
         title: String,
-        youtubeUrl: String? = null,
-        nextRunTimeText: String? = null,
         category: String? = null,
-        categoryId: String? = null,
         language: String? = null,
-        durationSec: Int? = null,
-        playlistName: String? = null,
-        hashtags: List<String>? = null
+        durationSec: Int? = null
     ) {
         createNotificationChannel(context)
 
@@ -292,45 +234,23 @@ object PipelineNotificationManager {
             manager.cancel(PROGRESS_NOTIFICATION_ID)
         } catch (e: Exception) {}
 
-        val summaryText = if (!youtubeUrl.isNullOrBlank()) {
-            "🚀 Video Live On YouTube! Tap to watch."
-        } else {
-            "⚡ Video Synthesized & Saved by Glitch OS!"
-        }
+        val summaryText = "Video generated and saved on this device."
 
         val expandedText = buildString {
             append("🎬 Title: $title\n")
             if (!category.isNullOrBlank()) {
-                append("📁 Category: $category")
-                if (!categoryId.isNullOrBlank()) append(" (ID: $categoryId)")
-                append("\n")
+                append("📁 Category: $category\n")
             }
             if (!language.isNullOrBlank() || durationSec != null) {
                 val langStr = language ?: "Standard"
                 val durStr = if (durationSec != null) "${durationSec}s" else "60s"
                 append("🎙 Language: $langStr | ⏱ Length: $durStr\n")
             }
-            if (!playlistName.isNullOrBlank()) {
-                append("📂 Playlist: $playlistName\n")
-            }
-            if (!youtubeUrl.isNullOrBlank()) {
-                append("📺 YouTube: $youtubeUrl\n")
-            }
-            if (!hashtags.isNullOrEmpty()) {
-                append("🏷 Tags: ${hashtags.take(5).joinToString(" ")}\n")
-            }
-            if (!nextRunTimeText.isNullOrBlank()) {
-                append("⏰ Next Autopilot Run: $nextRunTimeText\n")
-            }
-            append("⚡ Powered by GLITCH OS Autonomous Studio")
+            append("Video is available in your local library.")
         }.trimEnd()
 
-        val mainIntent = if (!youtubeUrl.isNullOrBlank()) {
-            Intent(Intent.ACTION_VIEW, Uri.parse(youtubeUrl))
-        } else {
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
+        val mainIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
@@ -349,32 +269,6 @@ object PipelineNotificationManager {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
-        if (!youtubeUrl.isNullOrBlank()) {
-            builder.addAction(
-                R.drawable.ic_launcher_foreground,
-                "Watch Video",
-                pendingIntent
-            )
-
-            // Direct Share action button
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_SUBJECT, title)
-                putExtra(Intent.EXTRA_TEXT, "Check out my new video created with Glitch OS: $youtubeUrl #Shorts")
-            }
-            val sharePendingIntent = PendingIntent.getActivity(
-                context,
-                3,
-                Intent.createChooser(shareIntent, "Share Video Link"),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.addAction(
-                R.drawable.ic_launcher_foreground,
-                "Share Link",
-                sharePendingIntent
-            )
-        }
-
         try {
             val manager = NotificationManagerCompat.from(context)
             manager.notify(COMPLETION_NOTIFICATION_ID, builder.build())
@@ -386,11 +280,8 @@ object PipelineNotificationManager {
                     title = title,
                     message = summaryText,
                     category = category,
-                    categoryId = categoryId,
                     language = language,
-                    durationSec = durationSec,
-                    youtubeUrl = youtubeUrl,
-                    playlistName = playlistName
+                    durationSec = durationSec
                 )
             )
         } catch (e: Throwable) {
@@ -404,13 +295,11 @@ object PipelineNotificationManager {
             statusMessage = summaryText,
             progressPercent = 100,
             category = category,
-            categoryId = categoryId,
             language = language,
             durationSec = durationSec,
             stage = "Completed",
             lastUpdatedMs = System.currentTimeMillis(),
-            isCompleted = true,
-            youtubeUrl = youtubeUrl
+            isCompleted = true
         )
     }
 

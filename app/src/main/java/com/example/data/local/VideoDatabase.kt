@@ -4,24 +4,29 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
         ProjectEntity::class,
-        UserEntity::class,
-        SchedulerEntity::class,
         OfflineQueueEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class VideoDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
-    abstract fun authDao(): AuthDao
-    abstract fun schedulerDao(): SchedulerDao
     abstract fun offlineQueueDao(): OfflineQueueDao
 
     companion object {
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS user_auth")
+                db.execSQL("DROP TABLE IF EXISTS scheduler_settings")
+            }
+        }
+
         @Volatile
         private var INSTANCE: VideoDatabase? = null
 
@@ -32,6 +37,7 @@ abstract class VideoDatabase : RoomDatabase() {
                     VideoDatabase::class.java,
                     "glitch_video_database"
                 )
+                    .addMigrations(MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

@@ -2,7 +2,6 @@ package com.example.util
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlarmManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -20,19 +19,16 @@ object BackgroundPermissionHelper {
     data class BackgroundPermissionStatus(
         val isNotificationGranted: Boolean,
         val isBatteryOptimizationIgnored: Boolean,
-        val canScheduleExactAlarm: Boolean,
         val isAllGranted: Boolean
     )
 
     fun checkStatus(context: Context): BackgroundPermissionStatus {
         val notifGranted = isNotificationPermissionGranted(context)
         val batteryIgnored = isIgnoringBatteryOptimizations(context)
-        val alarmGranted = canScheduleExactAlarms(context)
         return BackgroundPermissionStatus(
             isNotificationGranted = notifGranted,
             isBatteryOptimizationIgnored = batteryIgnored,
-            canScheduleExactAlarm = alarmGranted,
-            isAllGranted = notifGranted && batteryIgnored && alarmGranted
+            isAllGranted = notifGranted && batteryIgnored
         )
     }
 
@@ -61,15 +57,6 @@ object BackgroundPermissionHelper {
         }
     }
 
-    fun canScheduleExactAlarms(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
-            alarmManager?.canScheduleExactAlarms() ?: true
-        } else {
-            true
-        }
-    }
-
     fun requestBatteryOptimizationExemption(context: Context) {
         try {
             val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
@@ -85,21 +72,6 @@ object BackgroundPermissionHelper {
                 }
                 context.startActivity(fallbackIntent)
             } catch (e2: Exception) {
-                openAppDetailsSettings(context)
-            }
-        }
-    }
-
-    fun requestExactAlarmPermission(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to open exact alarm settings: ${e.message}")
                 openAppDetailsSettings(context)
             }
         }

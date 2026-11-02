@@ -10,7 +10,7 @@ object AdvancedStoryPromptEngine {
 
     fun buildAdvancedNotrackPrompt(topic: String, sceneNumber: Int, totalScenes: Int = 10): String {
         return """
-            You are an elite viral YouTube Shorts content & animation master.
+            You are an elite short-form video content and animation specialist.
             Generate a hyper-detailed, emotionally captivating animation script and HTML5/CSS3/JS code for Scene #$sceneNumber of $totalScenes.
             Topic/Theme: "$topic"
             

@@ -23,7 +23,7 @@ Create an original, coherent, exactly 10-scene video package from the user's top
 
 USER CONFIGURATION
 - Topic: ${JSONObject.quote(topic.trim())}
-- YouTube category: ${JSONObject.quote(category.trim())}
+- Video category: ${JSONObject.quote(category.trim())}
 - Narration language: ${JSONObject.quote(language.trim())}
 - Total target duration: $durationSeconds seconds
 - Aspect ratio: $aspectRatio

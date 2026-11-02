@@ -78,6 +78,7 @@ fun KeyView(
 
     val displayLabel = when (keyModel.type) {
         KeyType.LETTER -> if (stateHolder.shiftState != ShiftState.OFF) keyModel.shiftedLabel else keyModel.label
+        KeyType.ENTER -> stateHolder.enterKeyLabel
         else -> keyModel.label
     }
 
@@ -244,7 +245,9 @@ fun KeyView(
             },
         contentAlignment = Alignment.Center
     ) {
-        if (keyModel.subLabel != null && keyModel.type == KeyType.LETTER) {
+        val isDuplicateNumberHint = stateHolder.keyboardMode == KeyboardMode.QWERTY &&
+            stateHolder.showNumberRow && keyModel.subLabel?.singleOrNull()?.isDigit() == true
+        if (keyModel.subLabel != null && keyModel.type == KeyType.LETTER && !isDuplicateNumberHint) {
             Text(
                 text = keyModel.subLabel,
                 fontSize = 9.sp,

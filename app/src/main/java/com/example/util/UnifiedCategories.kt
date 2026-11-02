@@ -3,7 +3,7 @@ package com.example.util
 /**
  * Unified single source of truth for all content categories across:
  * 1. Settings (Content Category Niche & AI Agent Profile)
- * 2. Studio (YouTube Management, Channels & Fleet)
+ * 2. Video generation categories
  * 3. Main Screen (Home Auto-Pilot & Scheduler)
  */
 object UnifiedCategories {

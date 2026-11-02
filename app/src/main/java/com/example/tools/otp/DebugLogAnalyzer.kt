@@ -2,6 +2,15 @@ package com.example.tools.otp
 
 object DebugLogAnalyzer {
     fun analyzeLogs(rawLogs: List<String>): CheckResult {
+        if (rawLogs.isEmpty()) {
+            return CheckResult(
+                id = "debug_log_analyzer",
+                status = "LOGS_NOT_PROVIDED",
+                findings = emptyList(),
+                errors = listOf("No real diagnostic logs were provided. Add logs from the target app and run the scan again.")
+            )
+        }
+
         val findings = mutableListOf<String>()
         val errors = mutableListOf<String>()
 
@@ -16,20 +25,12 @@ object DebugLogAnalyzer {
             }
         }
 
-        val status = if (findings.isNotEmpty()) "AVAILABLE" else "PERMISSION_REQUIRED"
+        val status = if (findings.isNotEmpty()) "AVAILABLE" else "NO_MATCHES"
         return CheckResult(
             id = "debug_log_analyzer",
             status = status,
             findings = findings,
             errors = errors
-        )
-    }
-
-    fun getSampleLogs(): List<String> {
-        return listOf(
-            "D/OtpService: otp_request initiated for orderId=ORD12345",
-            "I/CancelWorkflow: cancel order request sent with token=[REDACTED]",
-            "E/VerifyHandler: verification_failed due to invalid OTP value=[REDACTED]"
         )
     }
 }

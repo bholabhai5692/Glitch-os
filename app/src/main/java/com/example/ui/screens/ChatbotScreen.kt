@@ -58,22 +58,6 @@ data class ChatMessage(
     val timestamp: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun YouTubeAiChatbotScreen(
-    viewModel: MainViewModel? = null,
-    onNavigateBack: () -> Unit = {},
-    onNavigateToPreview: (String, String) -> Unit = { _, _ -> },
-    hideTopBar: Boolean = false
-) {
-    ChatbotScreen(
-        viewModel = viewModel,
-        onNavigateBack = onNavigateBack,
-        onNavigateToPreview = onNavigateToPreview,
-        hideTopBar = hideTopBar
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ChatbotScreen(
@@ -1087,11 +1071,6 @@ private suspend fun generateAiChatbotResponse(
                             textBuilder.append(description).append("\n\n")
                         } else if (response.isNotBlank()) {
                             textBuilder.append(response).append("\n\n")
-                        }
-
-                        val tags = jsonObj.optString("tags", "")
-                        if (tags.isNotBlank()) {
-                            textBuilder.append("🏷️ Tags: ").append(tags)
                         }
 
                         val finalOutput = textBuilder.toString().trim()

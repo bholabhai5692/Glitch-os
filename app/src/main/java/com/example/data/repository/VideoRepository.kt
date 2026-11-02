@@ -79,12 +79,7 @@ class VideoRepository(
             put("description500", result.metadata.description)
             put("story", result.metadata.story)
             put("narration", result.metadata.narration)
-            put("tags", JSONArray(result.metadata.tags))
-            put("hashtags", JSONArray(result.metadata.hashtags))
-            put("titleVariations", JSONArray(result.metadata.titleVariations))
             put("selectedTitle", result.metadata.title)
-            result.metadata.seoScore?.let { put("seoScore", it) }
-            put("richDescription", result.metadata.richDescription.ifBlank { result.metadata.description })
         }.toString()
 
         val promptsJson = JSONArray().apply {
@@ -129,19 +124,6 @@ class VideoRepository(
         )
         projectDao.insertProject(entity)
 
-        val now = System.currentTimeMillis()
-        val currentSettings = settingsManager.settingsFlow.value
-        val nextRun = com.example.worker.AutomationSchedulerManager.getEffectiveNextPublishTimestamp(
-            lastVideoTimestamp = now,
-            lastAutoPublishTimestamp = now,
-            intervalHours = currentSettings.scheduleIntervalHours
-        )
-        settingsManager.updateSettings(
-            currentSettings.copy(
-                lastAutoPublishTimestamp = now,
-                nextAutoPublishTimestamp = nextRun
-            )
-        )
     }
 
     // ----------------------------------------------------

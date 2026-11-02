@@ -9,20 +9,23 @@ data class ApiInspectionRecord(
 )
 
 object NetworkInspector {
-    fun inspectNetworkCalls(): CheckResult {
-        val sampleCalls = listOf(
-            ApiInspectionRecord("https://staging.api.delivery/v1/order/cancel", "POST", 200, 142, "2026-10-14T20:30:00Z"),
-            ApiInspectionRecord("https://staging.api.delivery/v1/otp/generate", "POST", 200, 210, "2026-10-14T20:30:15Z"),
-            ApiInspectionRecord("https://staging.api.delivery/v1/otp/verify", "POST", 400, 95, "2026-10-14T20:30:45Z")
-        )
+    fun inspectNetworkCalls(calls: List<ApiInspectionRecord>?): CheckResult {
+        if (calls == null) {
+            return CheckResult(
+                id = "network_inspector",
+                status = "NETWORK_DATA_NOT_PROVIDED",
+                findings = emptyList(),
+                errors = listOf("No real network capture was provided. Capture or provide network call records and run the scan again.")
+            )
+        }
 
-        val findings = sampleCalls.map { call ->
+        val findings = calls.map { call ->
             SecretRedactor.redact("[${call.method}] ${call.endpoint} -> Status: ${call.responseStatus} (${call.durationMs}ms)")
         }
 
         return CheckResult(
             id = "network_inspector",
-            status = "AVAILABLE",
+            status = if (calls.isEmpty()) "NO_CALLS_OBSERVED" else "AVAILABLE",
             findings = findings,
             errors = emptyList()
         )

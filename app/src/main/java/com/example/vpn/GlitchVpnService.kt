@@ -16,8 +16,12 @@ import com.example.R
 import kotlinx.coroutines.*
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
 
 class GlitchVpnService : VpnService() {
@@ -29,6 +33,7 @@ class GlitchVpnService : VpnService() {
 
         const val ACTION_CONNECT = "com.example.vpn.ACTION_CONNECT"
         const val ACTION_DISCONNECT = "com.example.vpn.ACTION_DISCONNECT"
+        const val ACTION_START_ADBLOCK = "com.example.vpn.ACTION_START_ADBLOCK"
 
         const val EXTRA_SERVER_IP = "EXTRA_SERVER_IP"
         const val EXTRA_SERVER_NAME = "EXTRA_SERVER_NAME"
@@ -37,6 +42,10 @@ class GlitchVpnService : VpnService() {
 
         @Volatile
         var isRunning = false
+            private set
+
+        @Volatile
+        var isAdBlocking = false
             private set
 
         fun startVpn(
@@ -74,6 +83,24 @@ class GlitchVpnService : VpnService() {
                 Log.w(TAG, "Cannot stop VPN service: ${e.message}")
             }
         }
+
+        fun startAdBlocking(context: Context): Boolean {
+            return try {
+                val intent = Intent(context, GlitchVpnService::class.java).apply {
+                    action = ACTION_START_ADBLOCK
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+                true
+            } catch (e: Exception) {
+                isAdBlocking = false
+                Log.e(TAG, "Cannot start DNS ad blocker: ${e.message}", e)
+                false
+            }
+        }
     }
 
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -93,6 +120,7 @@ class GlitchVpnService : VpnService() {
 
         when (action) {
             ACTION_CONNECT -> {
+                isAdBlocking = false
                 val ip = intent.getStringExtra(EXTRA_SERVER_IP) ?: ""
                 val name = intent.getStringExtra(EXTRA_SERVER_NAME) ?: "Global Gateway"
                 val country = intent.getStringExtra(EXTRA_COUNTRY_CODE) ?: "GLOBAL"
@@ -118,6 +146,27 @@ class GlitchVpnService : VpnService() {
                 }
                 connectTunnel(ip, name, country, port)
             }
+            ACTION_START_ADBLOCK -> {
+                try {
+                    val notification = buildVpnNotification("Starting DNS ad and tracker blocking...")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        )
+                    } else {
+                        startForeground(NOTIFICATION_ID, notification)
+                    }
+                } catch (e: Exception) {
+                    isAdBlocking = false
+                    Log.e(TAG, "Cannot start foreground DNS blocker: ${e.message}", e)
+                    updateStatusDisconnected("Cannot start DNS blocker: ${e.message}")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                connectAdBlockTunnel()
+            }
             ACTION_DISCONNECT -> {
                 disconnectTunnel()
                 try {
@@ -130,8 +179,56 @@ class GlitchVpnService : VpnService() {
         return START_STICKY
     }
 
+    private fun connectAdBlockTunnel() {
+        closeCurrentTunnel()
+        updateStatusDisconnected()
+        tunnelJob = serviceScope.launch {
+            try {
+                val builder = Builder().apply {
+                    setSession("Glitch OS DNS Ad Blocker")
+                    addAddress("10.111.222.2", 32)
+                    addDnsServer("10.111.222.1")
+                    addRoute("10.111.222.1", 32)
+                    setMtu(1500)
+                    setBlocking(true)
+                }
+
+                vpnInterface = builder.establish()
+                val descriptor = vpnInterface
+                if (descriptor == null) {
+                    isAdBlocking = false
+                    updateStatusDisconnected("Android did not establish the DNS filtering VPN")
+                    stopSelf()
+                    return@launch
+                }
+
+                isRunning = true
+                isAdBlocking = true
+                val notification = buildVpnNotification(
+                    "DNS ad and tracker filtering active; other traffic stays on your network"
+                )
+                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                    .notify(NOTIFICATION_ID, notification)
+                runDnsPacketLoop(descriptor)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                isRunning = false
+                isAdBlocking = false
+                try {
+                    vpnInterface?.close()
+                } catch (closeError: Exception) {
+                    Log.w(TAG, "Error closing failed DNS interface: ${closeError.message}")
+                }
+                vpnInterface = null
+                Log.e(TAG, "DNS filtering VPN error: ${e.message}", e)
+                updateStatusDisconnected("DNS filtering VPN error: ${e.message}")
+            }
+        }
+    }
+
     private fun connectTunnel(ip: String, name: String, country: String, port: Int) {
-        tunnelJob?.cancel()
+        closeCurrentTunnel()
         tunnelJob = serviceScope.launch {
             try {
                 Log.i(TAG, "Establishing Real VPN Interface for $name ($ip)...")
@@ -181,9 +278,68 @@ class GlitchVpnService : VpnService() {
                 // Start Packet processing & Keepalive loop
                 runPacketLoop(vpnInterface!!)
             } catch (e: Exception) {
+                isAdBlocking = false
                 Log.e(TAG, "VPN Tunnel error: ${e.message}", e)
                 updateStatusDisconnected("VPN connection error: ${e.message}")
             }
+        }
+    }
+
+    private suspend fun runDnsPacketLoop(pfd: ParcelFileDescriptor) = withContext(Dispatchers.IO) {
+        val inputStream = FileInputStream(pfd.fileDescriptor)
+        val outputStream = FileOutputStream(pfd.fileDescriptor)
+        val packet = ByteArray(32_767)
+        val matcher = AdBlockDomainMatcher.default()
+
+        try {
+            while (isActive && isRunning && isAdBlocking) {
+                val length = inputStream.channel.read(ByteBuffer.wrap(packet))
+                if (length <= 0) continue
+
+                val query = DnsPacketCodec.parseIpv4DnsQuery(packet, length) ?: continue
+                val response = if (query.questionNames.any(matcher::shouldBlock)) {
+                    DnsPacketCodec.blockedResponse(query)
+                } else {
+                    val upstreamResponse = try {
+                        resolveDns(query.dnsMessage)
+                    } catch (e: SocketTimeoutException) {
+                        Log.w(TAG, "Upstream DNS request timed out")
+                        null
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Upstream DNS request failed: ${e.message}")
+                        null
+                    }
+                    if (upstreamResponse != null && DnsPacketCodec.isValidDnsResponse(query, upstreamResponse)) {
+                        DnsPacketCodec.responsePacket(query, upstreamResponse)
+                    } else {
+                        DnsPacketCodec.servfailResponse(query)
+                    }
+                }
+                outputStream.write(response)
+            }
+        } finally {
+            inputStream.close()
+            outputStream.close()
+        }
+    }
+
+    private fun resolveDns(query: ByteArray): ByteArray {
+        val upstream = InetAddress.getByName("1.1.1.1")
+        val socket = DatagramSocket()
+        try {
+            if (!protect(socket)) {
+                throw IllegalStateException("Could not protect upstream DNS socket from the VPN")
+            }
+            socket.soTimeout = 3_000
+            socket.connect(upstream, 53)
+            socket.send(DatagramPacket(query, query.size, upstream, 53))
+
+            val responseBuffer = ByteArray(4_096)
+            val responsePacket = DatagramPacket(responseBuffer, responseBuffer.size)
+            socket.receive(responsePacket)
+            return responsePacket.data.copyOf(responsePacket.length)
+        } finally {
+            socket.close()
         }
     }
 
@@ -243,15 +399,21 @@ class GlitchVpnService : VpnService() {
 
     private fun disconnectTunnel() {
         Log.i(TAG, "Tearing down VPN Tunnel...")
+        closeCurrentTunnel()
+        updateStatusDisconnected()
+    }
+
+    private fun closeCurrentTunnel() {
         isRunning = false
+        isAdBlocking = false
         tunnelJob?.cancel()
+        tunnelJob = null
         try {
             vpnInterface?.close()
         } catch (e: Exception) {
             Log.w(TAG, "Error closing VPN interface: ${e.message}")
         }
         vpnInterface = null
-        updateStatusDisconnected()
     }
 
     private fun updateStatusDisconnected(error: String? = null) {

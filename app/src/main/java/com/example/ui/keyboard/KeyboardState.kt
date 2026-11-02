@@ -1,6 +1,7 @@
 package com.example.ui.keyboard
 
 import android.content.Context
+import android.text.InputType
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -15,6 +16,9 @@ class KeyboardStateHolder {
 
     var activeInputConnection by mutableStateOf<InputConnection?>(null)
     var inputConnectionProvider: (() -> InputConnection?)? = null
+    private var currentImeAction by mutableIntStateOf(EditorInfo.IME_ACTION_UNSPECIFIED)
+    private var isSensitiveInput = false
+    private var disallowPersonalizedLearning = false
 
     val resolvedInputConnection: InputConnection?
         get() = activeInputConnection ?: inputConnectionProvider?.invoke()
@@ -40,9 +44,12 @@ class KeyboardStateHolder {
     var isHinglishModeEnabled by mutableStateOf(false)
         private set
 
+    var onlineSuggestionsEnabled by mutableStateOf(false)
+        private set
+
     // Sound and Haptics
     var soundManager: KeyboardSoundManager? = null
-    var soundType by mutableStateOf(SoundType.SYSTEM_CLICK)
+    var soundType by mutableStateOf(SoundType.OFF)
         private set
     var soundVolume by mutableStateOf(1.0f)
         private set
@@ -83,13 +90,13 @@ class KeyboardStateHolder {
         private set
 
     // Advanced High-Speed Architecture Flags
-    var useBatchEditOptimization by mutableStateOf(true)
+    var useBatchEditOptimization by mutableStateOf(false)
         private set
 
     var useSmartStringDiffing by mutableStateOf(true)
         private set
 
-    var autoTypeBatchSize by mutableStateOf(2) // 1, 2, 5, 10 updates per cycle
+    var autoTypeBatchSize by mutableStateOf(1) // 1, 2, 5, 10 updates per cycle
         private set
 
     var autoTypeLoopDelayMs by mutableStateOf(2L) // 1ms, 2ms, 5ms
@@ -273,6 +280,42 @@ class KeyboardStateHolder {
             KeyboardMode.SYMBOLS -> KeyboardLayouts.SYMBOLS
         }
 
+    val enterKeyLabel: String
+        get() = when (currentImeAction) {
+            EditorInfo.IME_ACTION_GO -> "Go"
+            EditorInfo.IME_ACTION_SEARCH -> "Search"
+            EditorInfo.IME_ACTION_SEND -> "Send"
+            EditorInfo.IME_ACTION_NEXT -> "Next"
+            EditorInfo.IME_ACTION_DONE -> "Done"
+            EditorInfo.IME_ACTION_PREVIOUS -> "Previous"
+            else -> "↵"
+        }
+
+    fun updateEditorInfo(info: EditorInfo?) {
+        currentImeAction = info?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
+            ?: EditorInfo.IME_ACTION_UNSPECIFIED
+        disallowPersonalizedLearning = info?.let {
+            it.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0
+        } ?: false
+
+        val inputType = info?.inputType ?: InputType.TYPE_NULL
+        val inputClass = inputType and InputType.TYPE_MASK_CLASS
+        val variation = inputType and InputType.TYPE_MASK_VARIATION
+        isSensitiveInput = inputClass != InputType.TYPE_CLASS_TEXT ||
+            (inputClass == InputType.TYPE_CLASS_TEXT &&
+            (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD)) ||
+            (inputClass == InputType.TYPE_CLASS_NUMBER &&
+                variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+        updateSuggestions()
+    }
+
+    fun updateOnlineSuggestionsEnabled(enabled: Boolean) {
+        onlineSuggestionsEnabled = enabled
+        updateSuggestions()
+    }
+
     fun updateTextFieldValue(newValue: TextFieldValue) {
         textFieldValue = newValue
         updateSuggestions()
@@ -295,22 +338,9 @@ class KeyboardStateHolder {
                 handleBackspace()
             }
             KeyType.ENTER -> {
-                resolvedInputConnection?.let { conn ->
-                    conn.beginBatchEdit()
-                    conn.commitText("\n", 1)
-                    conn.endBatchEdit()
-                }
-                val currentText = textFieldValue.text
-                val selection = textFieldValue.selection
-                val newText = StringBuilder(currentText)
-                    .replace(selection.min, selection.max, "\n")
-                    .toString()
-                val newCursor = selection.min + 1
-                textFieldValue = TextFieldValue(
-                    text = newText,
-                    selection = TextRange(newCursor)
-                )
-                updateSuggestions()
+                resolvedInputConnection?.let(::performEnterAction)
+                suggestions = emptyList()
+                suggestionJob?.cancel()
             }
             KeyType.SHIFT -> {
                 shiftState = when (shiftState) {
@@ -511,51 +541,51 @@ class KeyboardStateHolder {
     private fun updateSuggestions() {
         suggestionJob?.cancel()
         val text = textFieldValue.text
-        val cursor = textFieldValue.selection.min
+        val cursor = textFieldValue.selection.min.coerceIn(0, text.length)
         val wordStart = getCurrentWordStart(text, cursor)
         val currentWord = if (wordStart <= cursor && cursor <= text.length) {
             text.substring(wordStart, cursor).trim()
         } else ""
 
-        if (currentWord.isBlank() || currentWord.contains(" ")) {
+        if (isSensitiveInput || currentWord.isBlank() || currentWord.contains(" ")) {
             suggestions = emptyList()
             return
         }
 
+        val hinglish = if (isHinglishModeEnabled) {
+            HinglishTransliteration.getHinglishSuggestions(currentWord)
+        } else emptyList()
+        val local = KeyboardAlgorithms.getSuggestions(currentWord, maxResults = 3)
+        val baseCombined = normalizeSuggestions(hinglish + local, 3)
+        suggestions = baseCombined
+
+        if (!onlineSuggestionsEnabled || disallowPersonalizedLearning || currentWord.length < 2) return
+
         suggestionJob = autoTypeScope.launch {
-            delay(35) // Debounce fast typing
-            val hinglish = if (isHinglishModeEnabled) {
-                HinglishTransliteration.getHinglishSuggestions(currentWord)
-            } else emptyList()
-
-            val local = KeyboardAlgorithms.getSuggestions(currentWord, maxResults = 3)
-            val baseCombined = (hinglish + local)
-                .map { it.copy(word = it.word.trim().split(Regex("\\s+")).firstOrNull() ?: it.word.trim()) }
-                .filter { it.word.isNotBlank() && !it.word.contains(" ") }
-                .distinctBy { it.word.lowercase() }
-                .take(3)
-
-            withContext(Dispatchers.Main.immediate) {
-                suggestions = baseCombined
+            delay(180)
+            val language = if (isHinglishModeEnabled) "hi" else "en"
+            val online = GoogleSuggestService.fetchGoogleSuggestions(currentWord, lang = language, maxResults = 3)
+            val latestWord = withContext(Dispatchers.Main.immediate) {
+                val latestText = textFieldValue.text
+                val latestCursor = textFieldValue.selection.min.coerceIn(0, latestText.length)
+                val latestStart = getCurrentWordStart(latestText, latestCursor)
+                latestText.substring(latestStart, latestCursor).trim()
             }
-
-            if (currentWord.length >= 2) {
-                val lang = if (isHinglishModeEnabled) "hi" else "en"
-                val googleResults = GoogleSuggestService.fetchGoogleSuggestions(currentWord, lang = lang, maxResults = 3)
-                if (googleResults.isNotEmpty()) {
-                    val merged = (baseCombined + googleResults)
-                        .map { it.copy(word = it.word.trim().split(Regex("\\s+")).firstOrNull() ?: it.word.trim()) }
-                        .filter { it.word.isNotBlank() && !it.word.contains(" ") }
-                        .distinctBy { it.word.lowercase() }
-                        .take(4)
-
-                    withContext(Dispatchers.Main.immediate) {
-                        suggestions = merged
-                    }
+            if (latestWord.equals(currentWord, ignoreCase = true) && !isSensitiveInput && online.isNotEmpty()) {
+                val merged = normalizeSuggestions(baseCombined + online, 4)
+                withContext(Dispatchers.Main.immediate) {
+                    suggestions = merged
                 }
             }
         }
     }
+
+    private fun normalizeSuggestions(items: List<WordSuggestion>, limit: Int): List<WordSuggestion> =
+        items
+            .map { it.copy(word = it.word.trim().split(Regex("\\s+")).firstOrNull() ?: it.word.trim()) }
+            .filter { it.word.isNotBlank() && !it.word.contains(" ") }
+            .distinctBy { it.word.lowercase() }
+            .take(limit)
 
     fun dismissSuggestions() {
         suggestions = emptyList()
@@ -590,6 +620,10 @@ class KeyboardStateHolder {
     }
 
     fun switchPanel(panel: ActivePanel) {
+        if (autoTypeState == AutoTypeState.RUNNING || autoTypeState == AutoTypeState.STOPPING) {
+            activePanel = ActivePanel.AUTO_TYPE
+            return
+        }
         playFeedback()
         activePanel = if (activePanel == panel) ActivePanel.KEYBOARD else panel
     }
@@ -764,6 +798,17 @@ class KeyboardStateHolder {
 
     fun toggleBatchEditOptimization() {
         useBatchEditOptimization = !useBatchEditOptimization
+    }
+
+    private fun performEnterAction(connection: InputConnection) {
+        val action = currentImeAction
+        val actionHandled = action != EditorInfo.IME_ACTION_UNSPECIFIED &&
+            action != EditorInfo.IME_ACTION_NONE &&
+            connection.performEditorAction(action)
+        if (!actionHandled) {
+            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+            connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        }
     }
 
     fun toggleSmartStringDiffing() {
@@ -971,9 +1016,7 @@ class KeyboardStateHolder {
         val conn = resolvedInputConnection ?: return
         conn.beginBatchEdit()
         conn.commitText(nextStr, 1)
-        conn.performEditorAction(EditorInfo.IME_ACTION_SEND)
-        conn.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
-        conn.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        performEnterAction(conn)
         conn.endBatchEdit()
     }
 

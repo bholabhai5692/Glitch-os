@@ -10,7 +10,7 @@ object SourceCodeAnalyzer {
                 id = "source_code_search",
                 status = "SOURCE_NOT_PROVIDED",
                 findings = emptyList(),
-                errors = listOf("No source code files provided for inspection.")
+                errors = listOf("No real source files were provided. Select source files and run the scan again.")
             )
         }
 
@@ -28,25 +28,9 @@ object SourceCodeAnalyzer {
 
         return CheckResult(
             id = "source_code_search",
-            status = "AVAILABLE",
+            status = if (findings.isEmpty()) "NO_MATCHES" else "AVAILABLE",
             findings = findings,
             errors = emptyList()
-        )
-    }
-
-    fun getSampleSourceSnippets(): Map<String, String> {
-        return mapOf(
-            "OrderViewModel.kt" to """
-                fun cancelOrder(orderId: String) {
-                    val otp = generateOtp()
-                    verify(orderId, otp)
-                }
-            """.trimIndent(),
-            "NetworkService.kt" to """
-                fun requestOtp(orderId: String) {
-                    // Calls backend staging API
-                }
-            """.trimIndent()
         )
     }
 }

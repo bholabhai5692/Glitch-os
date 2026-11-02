@@ -151,7 +151,7 @@ class NotrackWebViewClient(
             request: VideoRequest
         ): String {
             val topic = request.topic.trim()
-            require(topic.isNotBlank()) {
+            require(topic.isNotBlank() && !topic.startsWith("Auto", ignoreCase = true)) {
                 "A real topic must be supplied before generating video metadata."
             }
             val topicLine = "$topic in category '${request.category}'"
@@ -160,7 +160,7 @@ class NotrackWebViewClient(
             val targetWords = (request.targetDurationSec * 2.5).toInt().coerceIn(120, 200)
 
             return """
-You are a scriptwriting assistant. Produce a draft that must be reviewed against reliable sources before publishing factual claims.
+You are a scriptwriting assistant. Produce a draft that must be reviewed against reliable sources before use.
 Topic: $topicLine
 Niche: ${request.category}
 Language: $lang
@@ -174,10 +174,8 @@ Rules:
 1. 'narration': Write the complete spoken script in $lang, targeting approximately $targetWords words.
 2. 'title': Provide a concise, accurate title in $lang or English (max 100 characters).
 3. 'summary': Summarize only information supported by the supplied topic and context.
-4. 'description': Write a neutral description without unsupported search-volume or performance claims.
+4. 'description': Write a concise, neutral summary of the planned video.
 5. 'story': Describe the video's planned narrative without adding factual claims.
-6. 'tags': Return relevant topic/category tags; do not claim search volume.
-7. 'hashtags': Return relevant category/topic hashtags only when appropriate.
 
 Output ONLY a valid JSON object matching this structure:
 {
@@ -185,9 +183,7 @@ Output ONLY a valid JSON object matching this structure:
   "summary": "",
   "description": "",
   "story": "",
-  "narration": "",
-  "tags": [],
-  "hashtags": []
+  "narration": ""
 }
 """.trimIndent()
         }
@@ -252,22 +248,12 @@ Output ONLY a valid JSON object matching this structure:
                 "A real topic must be supplied with custom narration."
             }
             val title = request.customHook?.trim()?.takeIf { it.isNotBlank() } ?: topic
-            val metadataDrafts = com.example.util.VideoSeoOptimizer.generateDeepVideoSeo(
-                topic = topic,
-                category = request.category,
-                language = request.language,
-                customSummary = request.customNarration.trim()
-            )
             return VideoMetadata(
                 title = title,
                 summary = request.customNarration.take(150),
                 description = request.customNarration.trim(),
                 story = request.customNarration,
-                narration = request.customNarration,
-                tags = metadataDrafts.suggestedTags,
-                hashtags = metadataDrafts.richDescription.hashtags,
-                titleVariations = listOf(title),
-                richDescription = request.customNarration.trim()
+                narration = request.customNarration
             )
         }
         val prompt = buildMetadataPrompt(request)
@@ -460,62 +446,6 @@ Output ONLY a valid JSON object matching this structure:
         return ""
     }
 
-    suspend fun askNotrackForSmartReplies(
-        commentText: String,
-        videoTitle: String,
-        category: String
-    ): List<com.example.util.SmartReplyOption> {
-        return try {
-            val prompt = """
-                You are the autonomous YouTube Channel Growth and Comment AI Agent.
-                A viewer commented on our video. Create 3 distinct, high-engagement replies to convert this viewer into a dedicated subscriber.
-
-                Viewer Comment: "$commentText"
-                Video Title: "$videoTitle"
-                Channel Category: "$category"
-
-                Respond in strictly valid JSON object:
-                {
-                  "subscriber_conversion": "Reply text encouraging them to subscribe for upcoming content",
-                  "curiosity_hook": "Reply text teasing what happens next or asking their theory",
-                  "heart_appreciation": "Heartfelt appreciation thanking them with excitement"
-                }
-
-                Rules:
-                - Keep each reply 1-2 punchy sentences.
-                - Include 1-2 relevant emojis per reply.
-                - Do not claim that content is verified, pinned, planned, or scheduled unless the viewer's comment provides that context.
-                - Do not invent facts about the video or channel.
-                - Output ONLY valid JSON.
-            """.trimIndent()
-
-            val jsonString = askNotrackForJsonObject(prompt, timeout = 45_000)
-            val json = JSONObject(jsonString)
-            val subReply = json.optString("subscriber_conversion", "").trim()
-            val hookReply = json.optString("curiosity_hook", "").trim()
-            val heartReply = json.optString("heart_appreciation", "").trim()
-
-            val list = mutableListOf<com.example.util.SmartReplyOption>()
-            if (subReply.isNotBlank()) {
-                list.add(com.example.util.SmartReplyOption("Subscriber Conversion", subReply, "🔔"))
-            }
-            if (hookReply.isNotBlank()) {
-                list.add(com.example.util.SmartReplyOption("Curiosity Hook", hookReply, "🧠"))
-            }
-            if (heartReply.isNotBlank()) {
-                list.add(com.example.util.SmartReplyOption("Heart & Appreciation", heartReply, "❤️"))
-            }
-
-            if (list.isEmpty()) {
-                throw IllegalStateException("AI provider returned no usable comment replies.")
-            }
-            list
-        } catch (e: Exception) {
-            android.util.Log.w("NotrackWebViewClient", "Could not generate comment replies: ${e.message}")
-            throw e
-        }
-    }
-
     suspend fun askNotrackForViralScriptBreakdown(
         topic: String,
         category: String,
@@ -528,7 +458,7 @@ Output ONLY a valid JSON object matching this structure:
             val langInstruction = if (isHindi) "Write all voiceover and hook strictly in natural Hindi (Devanagari script or conversational Hindi)." else "Write strictly in high-energy English."
             val niche = resolveNiche(category)
             val prompt = """
-                You are a world-class viral YouTube Shorts and video scriptwriter for $niche ($category).
+                You are a short-form video scriptwriter for $niche ($category).
                 Create an authentic, non-generic, high-retention viral script specifically focused on:
                 Topic: "$topic"
                 Category: "$category"
@@ -628,281 +558,6 @@ Output ONLY a valid JSON object matching this structure:
             android.util.Log.w("NotrackWebViewClient", "askNotrackForViralScriptBreakdown note: ${e.message}")
             if (!globalFallbackEnabled) throw e
             com.example.util.ViralScriptGenerator.generateViralScript(topic, category, language, targetDurationSec)
-        }
-    }
-
-    suspend fun askNotrackForChannelChat(
-        userPrompt: String,
-        channelContext: String = "",
-        globalFallbackEnabled: Boolean = false
-    ): String {
-        return try {
-            val prompt = """
-                You are Glitch AI, the expert YouTube Channel Growth Strategist and Autonomous Producer.
-                Channel Context: $channelContext
-                Query: $userPrompt
-                
-                Provide an intelligent, direct, concise, high-impact YouTube strategy response with actionable steps and emojis.
-            """.trimIndent()
-            askNotrackForText(prompt, timeout = 50_000)
-        } catch (e: Exception) {
-            android.util.Log.w("NotrackWebViewClient", "askNotrackForChannelChat fallback triggered: ${e.message}")
-            if (!globalFallbackEnabled) throw e
-            "⚡ [Glitch AI Engine]: Based on your channel context ($channelContext), prioritize publishing high-contrast 60-second shorts during peak evening hours (6 PM - 9 PM) with curiosity hooks in the first 2 seconds to maximize audience retention!"
-        }
-    }
-
-    suspend fun askNotrackForChannelChat10Keys(
-        userPrompt: String,
-        channelContext: String = "",
-        onProgress: (status: String, partialSnippet: String) -> Unit = { _, _ -> }
-    ): Pair<String, Map<String, String>> {
-        require(channelContext.isNotBlank()) {
-            "Connect a YouTube channel and load its analytics before requesting channel diagnostics."
-        }
-        onProgress("🌐 Initializing live NoTrack scraper session...", "Target: https://notrack.ai/chat")
-        
-        val masterPrompt = """
-            You are NoTrack AI Master Strategist & Real-Time YouTube Channel Intelligence Engine.
-
-            === COMPLETE YOUTUBE CHANNEL DOSSIER & METRICS ===
-            $channelContext
-            ===================================================
-
-            USER INQUIRY:
-            $userPrompt
-
-            CRITICAL PROTOCOL & OUTPUT CONTRACT:
-            1. You MUST analyze the user's complete YouTube channel dossier provided above in relation to their question.
-            2. You MUST respond strictly with a valid JSON object containing EXACTLY 10 key-value pairs (no markdown formatting, no code fences, only valid JSON).
-            3. The 10 keys must be descriptive diagnostic markers:
-               - "channel_health_status": Overall rating and health score of the channel.
-               - "audience_retention_insight": Critical finding regarding retention and viewer drop-off.
-               - "top_performing_signal": What is driving the channel's highest view counts and engagement.
-               - "content_gap_identified": Urgent missing topic or format the audience is craving.
-               - "ctr_and_thumbnail_verdict": Direct critique and advice on titles and thumbnails.
-               - "upload_cadence_strategy": Recommended optimal publishing frequency and day/hour windows.
-               - "viral_hook_formula": Specific first 3-second hook structure recommended for the next video.
-               - "monetization_and_reach_potential": Estimated RPM/CPM growth vector and reach forecast.
-               - "quota_and_automation_action": Strategic recommendation for autonomous queue and scheduled tasks.
-               - "immediate_next_step": Clear, concrete action the creator must execute within the next 24 hours.
-
-            Every value MUST be comprehensive, rich, and tailored strictly to the actual data provided in the dossier.
-        """.trimIndent()
-
-        onProgress("⚡ Injecting Master Prompt & Channel Dossier...", "Payload: ${masterPrompt.length} characters")
-        kotlinx.coroutines.delay(200)
-        onProgress("🤖 Dispatching prompt to NoTrack AI Scraper...", "Connecting to browser DOM session...")
-
-        val rawResponse = try {
-            askNotrackForJsonObject(masterPrompt, timeout = 45_000)
-        } catch (e: Exception) {
-            throw IllegalStateException("Live channel diagnostics could not be retrieved.", e)
-        }
-        onProgress("📡 Live response scraped from NoTrack DOM!", rawResponse.take(100) + "...")
-
-        val cleanJson = if (rawResponse.contains("{") && rawResponse.contains("}")) {
-            val start = rawResponse.indexOf('{')
-            val end = rawResponse.lastIndexOf('}') + 1
-            rawResponse.substring(start, end)
-        } else rawResponse
-        val json = JSONObject(cleanJson)
-
-        val standardKeys = listOf(
-            "channel_health_status",
-            "audience_retention_insight",
-            "top_performing_signal",
-            "content_gap_identified",
-            "ctr_and_thumbnail_verdict",
-            "upload_cadence_strategy",
-            "viral_hook_formula",
-            "monetization_and_reach_potential",
-            "quota_and_automation_action",
-            "immediate_next_step"
-        )
-
-        val final10Pairs = LinkedHashMap<String, String>()
-        for (k in standardKeys) {
-            val value = json.optString(k).trim()
-            check(value.isNotBlank()) { "Live channel diagnostics omitted required metric: $k" }
-            final10Pairs[k] = value
-        }
-
-        onProgress("✅ Scraping complete! 10 Key-Value Diagnostics verified.", "${final10Pairs.size} metric pairs parsed")
-        return Pair(rawResponse, final10Pairs)
-    }
-
-    suspend fun askNotrackForCommunityPosts(
-        category: String,
-        channelName: String
-    ): List<com.example.util.CommunityPostItem> {
-        return try {
-            val prompt = """
-                You are a YouTube community tab growth specialist for channel '$channelName' in niche '$category'.
-                Generate up to 3 editable community post drafts: a poll, a discussion question, and a general community prompt.
-                These are suggestions, not predictions. Do not claim a post is viral, will get a particular number of comments,
-                that a video is upcoming, or that a factual claim has been verified. Do not invent channel analytics or publishing times.
-
-                Respond strictly in this JSON format:
-                {
-                  "posts": [
-                    {
-                      "id": "poll_1",
-                      "type": "POLL",
-                      "title": "Poll title with emoji",
-                      "textContent": "Engaging question text",
-                      "pollOptions": ["Option A", "Option B", "Option C", "Option D"],
-                      "hashtags": ["#Tag1", "#Tag2", "#Tag3"]
-                    },
-                    {
-                      "id": "discussion_2",
-                      "type": "DISCUSSION",
-                      "title": "Discussion title with emoji",
-                      "textContent": "Question inviting audience discussion",
-                      "pollOptions": [],
-                      "hashtags": ["#Discussion", "#Community"]
-                    }
-                  ]
-                }
-            """.trimIndent()
-
-            val jsonString = askNotrackForJsonObject(prompt, timeout = 45_000)
-            val json = JSONObject(jsonString)
-            val postsArray = json.optJSONArray("posts")
-            val result = mutableListOf<com.example.util.CommunityPostItem>()
-
-            if (postsArray != null) {
-                for (i in 0 until postsArray.length()) {
-                    val obj = postsArray.getJSONObject(i)
-                    val options = mutableListOf<String>()
-                    val optArr = obj.optJSONArray("pollOptions")
-                    if (optArr != null) {
-                        for (j in 0 until optArr.length()) {
-                            options.add(optArr.getString(j))
-                        }
-                    }
-                    val tags = mutableListOf<String>()
-                    val tagArr = obj.optJSONArray("hashtags")
-                    if (tagArr != null) {
-                        for (k in 0 until tagArr.length()) {
-                            tags.add(tagArr.getString(k))
-                        }
-                    }
-
-                    result.add(
-                        com.example.util.CommunityPostItem(
-                            id = obj.optString("id", "post_${System.currentTimeMillis()}_$i"),
-                            type = obj.optString("type", "DISCUSSION"),
-                            title = obj.optString("title", "Community Update"),
-                            textContent = obj.optString("textContent", ""),
-                            pollOptions = options,
-                            hashtags = tags
-                        )
-                    )
-                }
-            }
-
-            if (result.isEmpty() || result.any { it.title.isBlank() || it.textContent.isBlank() }) {
-                throw IllegalStateException("AI provider returned invalid community post drafts.")
-            }
-            result
-        } catch (e: Exception) {
-            android.util.Log.w("NotrackWebViewClient", "Could not generate community post drafts: ${e.message}")
-            throw e
-        }
-    }
-
-    suspend fun askNotrackForSmartPlaylists(
-        category: String,
-        channelName: String,
-        recentTitles: List<String> = emptyList(),
-        globalFallbackEnabled: Boolean = false
-    ): List<com.example.util.SmartPlaylistSuggestion> {
-        return try {
-            val titlesContext = if (recentTitles.isNotEmpty()) {
-                "Recent video titles on channel: " + recentTitles.take(5).joinToString(", ")
-            } else {
-                "Niche focus: $category"
-            }
-
-            val prompt = """
-                You are a YouTube Algorithm Playlist Architect for channel '$channelName' in niche '$category'.
-                $titlesContext
-                
-                Generate a JSON object with a "playlists" array containing 3 high-retention binge-watching series playlists designed to maximize session watch time.
-                
-                Format JSON strictly as:
-                {
-                  "playlists": [
-                    {
-                      "title": "Vibrant Series Title with Emojis",
-                      "description": "2-3 sentence SEO rich description with #hashtags",
-                      "targetCategory": "$category",
-                      "recommendedVideoTitles": ["Video Concept 1", "Video Concept 2", "Video Concept 3"],
-                      "bingeWatchHook": "Why viewers will click next video automatically",
-                      "estimatedRetentionMultiplier": "+3.8x Session Watch Time"
-                    }
-                  ]
-                }
-            """.trimIndent()
-
-            val jsonString = askNotrackForJsonObject(prompt, timeout = 45_000)
-            val json = JSONObject(jsonString)
-            val array = json.optJSONArray("playlists")
-            val result = mutableListOf<com.example.util.SmartPlaylistSuggestion>()
-
-            if (array != null) {
-                for (i in 0 until array.length()) {
-                    val obj = array.optJSONObject(i) ?: continue
-                    val title = obj.optString("title", "$category Master Series")
-                    val desc = obj.optString("description", "Curated series in $category.")
-                    val cat = obj.optString("targetCategory", category)
-                    val recsArray = obj.optJSONArray("recommendedVideoTitles")
-                    val recs = mutableListOf<String>()
-                    if (recsArray != null) {
-                        for (j in 0 until recsArray.length()) {
-                            recs.add(recsArray.optString(j))
-                        }
-                    }
-                    val hook = obj.optString("bingeWatchHook", "High-curiosity narrative hook loop connecting sequential videos.")
-                    val mult = obj.optString("estimatedRetentionMultiplier", "+3.2x Watch Time")
-
-                    result.add(
-                        com.example.util.SmartPlaylistSuggestion(
-                            title = title,
-                            description = desc,
-                            targetCategory = cat,
-                            recommendedVideoTitles = recs,
-                            bingeWatchHook = hook,
-                            estimatedRetentionMultiplier = mult
-                        )
-                    )
-                }
-            }
-
-            if (result.isEmpty()) throw Exception("Empty playlists from NoTrack AI")
-            result
-        } catch (e: Exception) {
-            android.util.Log.w("NotrackWebViewClient", "NoTrack smart playlist generation fallback: ${e.message}")
-            if (!globalFallbackEnabled) throw e
-            listOf(
-                com.example.util.SmartPlaylistSuggestion(
-                    title = "🔥 $category: The Complete Viral Collection",
-                    description = "Watch the most mind-blowing and viral discoveries in $category! Binge the entire series now. #$category #Shorts #Viral",
-                    targetCategory = category,
-                    recommendedVideoTitles = listOf("Episode 1: The Hidden Discovery", "Episode 2: The Breakthrough", "Episode 3: The Secret Truth"),
-                    bingeWatchHook = "Sequential cliffhanger pacing keeps viewers hooked till the final video.",
-                    estimatedRetentionMultiplier = "+3.5x Session Duration"
-                ),
-                com.example.util.SmartPlaylistSuggestion(
-                    title = "⚡ $category: 100% Unfiltered Truth & Breakthroughs",
-                    description = "Shocking theories, unexpected findings, and deep dives into $category secrets. #Trending #Secrets",
-                    targetCategory = category,
-                    recommendedVideoTitles = listOf("Part 1: What They Kept Secret", "Part 2: The Evidence Unveiled"),
-                    bingeWatchHook = "Deep curiosity loop driving high click-through to Part 2.",
-                    estimatedRetentionMultiplier = "+2.9x Session Duration"
-                )
-            )
         }
     }
 
@@ -1375,7 +1030,7 @@ Strict Rules:
                lower.contains("2-sentence") ||
                lower.contains("detailed visual storyboard") ||
                lower.contains("engaging video description") ||
-               lower.contains("engaging description for youtube") ||
+               lower.contains("engaging video description") ||
                lower.contains("insert topic") ||
                lower.contains("placeholder") ||
                lower.contains("word-for-word voiceover script") ||
@@ -1400,8 +1055,6 @@ Strict Rules:
         val rawDesc = json.optString("description", "").trim()
         val rawStory = json.optString("story", "").trim()
         val rawNarration = json.optString("narration", "").trim()
-        val parsedTags = jsonArrayToList(json.optJSONArray("tags"))
-        val parsedHashtags = jsonArrayToList(json.optJSONArray("hashtags"))
 
         val narrationWordCount = rawNarration.split(Regex("\\s+")).filter { it.isNotBlank() }.size
         require(rawTitle.length in 5..100 && !isPlaceholderText(rawTitle)) {
@@ -1420,29 +1073,12 @@ Strict Rules:
             "The metadata provider returned missing, placeholder, or too-short narration."
         }
 
-        val filteredTags = parsedTags.filter { !it.contains("tag1", ignoreCase = true) && it.length > 2 }
-        val filteredHashtags = parsedHashtags.filter { !it.contains("tag1", ignoreCase = true) && it.length > 2 }
-
-        val metadataDrafts = com.example.util.VideoSeoOptimizer.generateDeepVideoSeo(
-            topic = rawTitle,
-            category = request.category,
-            language = request.language,
-            customSummary = rawSummary
-        )
-
-        val finalTags = if (filteredTags.isNotEmpty()) filteredTags else metadataDrafts.suggestedTags
-        val finalHashtags = if (filteredHashtags.isNotEmpty()) filteredHashtags else metadataDrafts.richDescription.hashtags
-
         return VideoMetadata(
             title = rawTitle,
             summary = rawSummary,
             description = rawDesc,
             story = rawStory,
-            narration = rawNarration,
-            tags = finalTags,
-            hashtags = finalHashtags,
-            titleVariations = metadataDrafts.titleVariations.map { it.title },
-            richDescription = metadataDrafts.richDescription.fullDescriptionText
+            narration = rawNarration
         )
     }
 
@@ -1666,22 +1302,6 @@ Strict Rules:
             start = clean.indexOf('[', start + 1)
         }
         return null
-    }
-
-    private fun jsonArrayToList(
-        array: JSONArray?
-    ): List<String> {
-        if (array == null) {
-            return emptyList()
-        }
-        return buildList {
-            for (i in 0 until array.length()) {
-                val value = array.optString(i)
-                if (value.isNotBlank()) {
-                    add(value)
-                }
-            }
-        }
     }
 
     private suspend fun eval(

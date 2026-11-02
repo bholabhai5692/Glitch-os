@@ -78,38 +78,12 @@ class VideoPipeline(
     }
 
     private fun jsonToMetadata(json: org.json.JSONObject): VideoMetadata {
-        val tagsList = mutableListOf<String>()
-        val tagsArr = json.optJSONArray("tags")
-        if (tagsArr != null) {
-            for (i in 0 until tagsArr.length()) {
-                tagsList.add(tagsArr.getString(i))
-            }
-        }
-        val hashtagsList = mutableListOf<String>()
-        val hashtagsArr = json.optJSONArray("hashtags")
-        if (hashtagsArr != null) {
-            for (i in 0 until hashtagsArr.length()) {
-                hashtagsList.add(hashtagsArr.getString(i))
-            }
-        }
-        val variationsList = mutableListOf<String>()
-        val variationsArr = json.optJSONArray("titleVariations")
-        if (variationsArr != null) {
-            for (i in 0 until variationsArr.length()) {
-                variationsList.add(variationsArr.getString(i))
-            }
-        }
         return VideoMetadata(
             title = json.optString("title", ""),
             summary = json.optString("summary", ""),
             description = json.optString("description", ""),
             story = json.optString("story", ""),
-            narration = json.optString("narration", ""),
-            tags = tagsList,
-            hashtags = hashtagsList,
-            titleVariations = variationsList,
-            seoScore = json.optInt("seoScore").takeIf { json.has("seoScore") && !json.isNull("seoScore") },
-            richDescription = json.optString("richDescription", "")
+            narration = json.optString("narration", "")
         )
     }
 
@@ -171,8 +145,6 @@ class VideoPipeline(
         onProgress(11, "[TITLE] ${metadata.title}")
         onProgress(12, "[SUMMARY] ${metadata.summary.take(120)}...")
         onProgress(13, "[NARRATION] ${metadata.narration.take(150)}...")
-        onProgress(14, "[TAGS] ${metadata.tags.joinToString(", ")}")
-        onProgress(15, "[HASHTAGS] ${metadata.hashtags.joinToString(" ")}")
 
         /*
          * STEP 2: VOICEOVER
@@ -455,11 +427,6 @@ class VideoPipeline(
             put("description", m.description)
             put("story", m.story)
             put("narration", m.narration)
-            put("tags", JSONArray(m.tags))
-            put("hashtags", JSONArray(m.hashtags))
-            put("titleVariations", JSONArray(m.titleVariations))
-            m.seoScore?.let { put("seoScore", it) }
-            put("richDescription", m.richDescription)
         }
     }
 }

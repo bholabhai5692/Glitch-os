@@ -439,7 +439,7 @@ object CaptionRegistry {
                     borderStyle = tmpl.c10,
                     animationStyle = "Word-by-Word Highlight Bounce",
                     description = "High-retention viral 9:16 caption style $name with dynamic color accents.",
-                    bestSuitedFor = "Shorts, Reels, TikTok & YouTube Videos"
+                    bestSuitedFor = "Short-form videos"
                 )
             )
         }

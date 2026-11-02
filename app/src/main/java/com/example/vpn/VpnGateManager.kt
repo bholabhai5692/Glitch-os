@@ -411,7 +411,7 @@ object VpnGateManager {
                 totalTrafficBytes = 210000000000L,
                 logType = "2w",
                 operator = "US West Gateway",
-                message = "YouTube / Netflix Unrestricted Gateway",
+                message = "Streaming and browsing gateway",
                 openVpnConfigBase64 = "Y2xpZW50CmRldiB0dW4KcHJvdG8gdWRwCnJlbW90ZSAxMDQuMjQ0Ljc1LjI1IDExOTQK"
             ),
             VpnServer(

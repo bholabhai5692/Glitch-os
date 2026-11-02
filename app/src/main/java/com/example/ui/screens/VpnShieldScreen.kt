@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.GlitchCard
 import com.example.ui.components.NeonButton
 import com.example.ui.theme.*
+import com.example.vpn.AdControlAccessibilityService
+import com.example.vpn.GlitchVpnService
 import com.example.vpn.PingQuality
 import com.example.vpn.VpnConnectionState
 import com.example.vpn.VpnGateManager
@@ -63,6 +65,10 @@ fun VpnShieldScreen(
     var sortBy by remember { mutableStateOf("PING") } // PING, SPEED, SCORE
 
     var pendingServerToConnect by remember { mutableStateOf<VpnServer?>(null) }
+    var isAdBlockActive by remember { mutableStateOf(GlitchVpnService.isAdBlocking) }
+    var isAdControlEnabled by remember {
+        mutableStateOf(AdControlAccessibilityService.isEnabled(context))
+    }
 
     val vpnPrepareLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
@@ -82,6 +88,18 @@ fun VpnShieldScreen(
         pendingServerToConnect = null
     }
 
+    val adBlockPrepareLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            if (!GlitchVpnService.startAdBlocking(context)) {
+                Toast.makeText(context, "Could not start the DNS blocker.", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            Toast.makeText(context, "VPN permission was denied.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun requestAndConnectVpn(server: VpnServer?) {
         pendingServerToConnect = server
         val prepareIntent = android.net.VpnService.prepare(context)
@@ -93,6 +111,35 @@ fun VpnShieldScreen(
             } else {
                 VpnGateManager.autoConnectFastest(context)
             }
+        }
+    }
+
+    fun toggleAdBlocker() {
+        if (GlitchVpnService.isAdBlocking) {
+            GlitchVpnService.stopVpn(context)
+            Toast.makeText(context, "DNS blocker stopped.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val prepareIntent = android.net.VpnService.prepare(context)
+        if (prepareIntent != null) {
+            adBlockPrepareLauncher.launch(prepareIntent)
+        } else if (!GlitchVpnService.startAdBlocking(context)) {
+            Toast.makeText(context, "Could not start the DNS blocker.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun openAccessibilitySettings() {
+        try {
+            context.startActivity(
+                android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            )
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(
+                context,
+                "Accessibility settings are unavailable on this device.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -112,6 +159,14 @@ fun VpnShieldScreen(
     LaunchedEffect(Unit) {
         if (servers.isEmpty()) {
             VpnGateManager.fetchServers(context)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            isAdBlockActive = GlitchVpnService.isAdBlocking
+            isAdControlEnabled = AdControlAccessibilityService.isEnabled(context)
+            delay(500)
         }
     }
 
@@ -236,6 +291,74 @@ fun VpnShieldScreen(
                 )
             }
 
+            item {
+                GlitchCard(
+                    borderColor = if (isAdBlockActive) NeonGreen else CyberCyan,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "VLOCKER DNS AD BLOCKER",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (isAdBlockActive) NeonGreen else CyberCyan
+                        )
+                        Text(
+                            text = "Filters system IPv4 DNS requests with local domain rules. Allowed lookups go to Cloudflare (1.1.1.1) over DNS/UDP; other traffic stays on your normal network. Private DNS, encrypted DNS, and apps using their own DNS resolver may bypass filtering. Android allows only one active VPN.",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            lineHeight = 15.sp
+                        )
+                        NeonButton(
+                            text = if (isAdBlockActive) "STOP DNS BLOCKER" else "START DNS BLOCKER",
+                            onClick = ::toggleAdBlocker,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("vlocker_dns_toggle")
+                        )
+                    }
+                }
+            }
+
+            item {
+                GlitchCard(
+                    borderColor = if (isAdControlEnabled) NeonGreen else CyberCyan,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "OPTIONAL ACCESSIBILITY AD CONTROLS",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (isAdControlEnabled) NeonGreen else CyberCyan
+                        )
+                        Text(
+                            text = "With your explicit Android Accessibility permission, Glitch OS checks visible control labels locally. It clicks only clearly labeled “Skip ad”, “Close ad”, or “Dismiss ad” controls; mute/unmute is attempted only with a clear video-ad signal. No screen text is saved or sent. App/player support varies; arbitrary swipes and actions on ordinary videos are intentionally disabled.",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            lineHeight = 15.sp
+                        )
+                        NeonButton(
+                            text = if (isAdControlEnabled) {
+                                "ACCESSIBILITY CONTROLS ENABLED — MANAGE"
+                            } else {
+                                "REVIEW & ENABLE IN ANDROID SETTINGS"
+                            },
+                            onClick = ::openAccessibilitySettings,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("vlocker_accessibility_settings")
+                        )
+                    }
+                }
+            }
+
             // Autopilot & Failover Automation Controls Card
             item {
                 GlitchCard(
@@ -272,7 +395,7 @@ fun VpnShieldScreen(
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "YouTube Auto-Pilot video generation start hone par VPN automatically active kar deta hai.",
+                                    text = "Video generation start hone par VPN automatically active ho jayega.",
                                     fontSize = 10.sp,
                                     color = TextSecondary,
                                     lineHeight = 13.sp
@@ -302,7 +425,7 @@ fun VpnShieldScreen(
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "Video generation ya upload me problem/error aane par VPN automatically next high-speed IP par switch ho jaye.",
+                                    text = "Video generation me network error aane par VPN next available server par switch ho sakta hai.",
                                     fontSize = 10.sp,
                                     color = TextSecondary,
                                     lineHeight = 13.sp
@@ -632,7 +755,7 @@ fun VpnStatusHeroCard(
                 }
             } else {
                 Text(
-                    text = "Browse anonymously, bypass geo-restrictions, and secure video uploads with 1-tap.",
+                    text = "Browse more privately and switch network servers with one tap.",
                     fontSize = 11.sp,
                     color = TextSecondary,
                     textAlign = TextAlign.Center,

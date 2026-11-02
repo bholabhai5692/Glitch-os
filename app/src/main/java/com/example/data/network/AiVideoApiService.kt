@@ -8,7 +8,6 @@ import com.example.data.model.LogsResponse
 import com.example.data.model.ProjectDetailsResponse
 import com.example.data.model.ProjectListResponse
 import com.example.data.model.SimpleSuccessResponse
-import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -37,8 +36,4 @@ interface AiVideoApiService {
 
     @GET("/logs")
     suspend fun getLogs(): Response<LogsResponse>
-
-    @Multipart
-    @POST("/upload/video")
-    suspend fun uploadVideo(@Part file: MultipartBody.Part): Response<SimpleSuccessResponse>
 }

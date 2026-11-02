@@ -1,5 +1,4 @@
 <resources>
     <string name="app_name">Glitch OS</string>
-    <string name="default_web_client_id" translatable="false">816122615291-ievunjg3te4neglo8mch581b5fbbcjpd.apps.googleusercontent.com</string>
-    <string name="ad_skipper_accessibility_desc">Glitch OS YouTube Ad Skipper Accessibility Service</string>
+    <string name="ad_control_accessibility_description">Optional ad controls: locally checks visible accessibility labels to mute, skip, or close clearly labeled video ads. No screen data is stored or sent.</string>
 </resources>

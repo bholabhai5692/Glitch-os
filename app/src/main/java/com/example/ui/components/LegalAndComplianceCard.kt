@@ -194,10 +194,10 @@ fun LegalAndComplianceCard(
                         title = "1. Privacy Policy / गोपनीयता नीति",
                         icon = Icons.Default.Security,
                         iconTint = CyberCyan,
-                        content = "• Data Ownership & Local Storage: आपकी सभी वीडियो फ़ाइलें, स्क्रिप्ट्स, और प्रोजेक्ट्स आपके डिवाइस पर स्थानीय रूप से और आपके द्वारा अधिकृत Firebase क्लाउड में सुरक्षित रहते हैं। हम आपका व्यक्तिगत डेटा किसी तीसरे पक्ष के साथ साझा या बेचते नहीं हैं।\n" +
-                                "• YouTube OAuth & Google Data: जब आप YouTube Auto-Pilot कनेक्ट करते हैं, तो Google OAuth टोकन केवल आपके चैनल पर वीडियो अपलोड करने के लिए सुरक्षित रूप से उपयोग किया जाता है। कोई अन्य गोपनीय जानकारी एक्सेस नहीं की जाती।\n" +
-                                "• API Keys & Credentials: आपके द्वारा दर्ज की गई सभी API Keys और क्रेडेंशियल्स एन्क्रिप्टेड स्टोरेज में केवल डिवाइस पर ही सुरक्षित रहते हैं।\n" +
-                                "• App Permissions: ऐप केवल वीडियो रेंडरिंग (Storage), नोटिफिकेशन अपडेट (Post Notifications) और बैकग्राउंड प्रोसेस (Battery Exemption) के लिए न्यूनतम आवश्यक अनुमतियों का उपयोग करता है।"
+                        content = "• Local Projects: वीडियो और प्रोजेक्ट विवरण इस डिवाइस पर सेव होते हैं।\n" +
+                                "• Online Video Generation: यदि आप ऑनलाइन जनरेशन चुनते हैं, तो आपका विषय और वीडियो बनाने के लिए जरूरी जानकारी चुनी गई इंटरनेट सेवा को भेजी जाती है।\n" +
+                                "• Accounts and Credentials: ऐप में साइन-इन, चैनल अकाउंट, Firebase या सेव की गई API key की सुविधा नहीं है।\n" +
+                                "• App Permissions: नोटिफिकेशन और बैकग्राउंड परमिशन केवल वीडियो जनरेशन की स्थिति और रेंडरिंग के लिए उपयोग होती हैं।"
                     )
                 }
 
@@ -207,10 +207,10 @@ fun LegalAndComplianceCard(
                         title = "2. Terms & Conditions / नियम एवं शर्तें",
                         icon = Icons.Default.Description,
                         iconTint = ElectricViolet,
-                        content = "• User Responsibility: आप इस ऐप द्वारा उत्पन्न किए गए सभी प्रॉम्प्ट, स्क्रिप्ट और प्रकाशित वीडियो के लिए पूर्णतः जिम्मेदार हैं।\n" +
-                                "• Platform Community Guidelines: ऐप का उपयोग करते समय YouTube, Google Play और अन्य सोशल मीडिया प्लेटफॉर्म्स के कम्युनिटी दिशा-निर्देशों (Community Guidelines) और कॉपीराइट नियमों का पालन करना अनिवार्य है।\n" +
+                        content = "• User Responsibility: आप इस ऐप द्वारा उत्पन्न किए गए सभी प्रॉम्प्ट, स्क्रिप्ट और वीडियो के लिए जिम्मेदार हैं।\n" +
+                                "• Copyright: केवल वही मीडिया उपयोग करें जिसके उपयोग की अनुमति आपके पास है।\n" +
                                 "• Prohibited Content: किसी भी प्रकार की नफरत भरी भाषा (Hate Speech), भ्रामक सूचना (Misinformation), अश्लील सामग्री या गैर-कानूनी गतिविधियों के लिए इस टूल का उपयोग पूर्णतः वर्जित है।\n" +
-                                "• Fair Rate Limits: AI इंजन और YouTube API का इस्तेमाल करते समय संबंधित सेवाओं की उचित उपयोग सीमाओं (Rate Limits) का ध्यान रखें।"
+                                "• Fair Use: ऑनलाइन सेवाओं का उपयोग उनकी लागू शर्तों और सीमाओं के अनुसार करें।"
                     )
                 }
 

@@ -1,9 +1,6 @@
 package com.example.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
@@ -160,7 +156,7 @@ fun LogsScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "No notifications logged yet.\nAuto-pilot & pipeline updates will appear here with full metadata.",
+                                    text = "No video generation notifications yet.",
                                     color = TextSecondary,
                                     fontSize = 13.sp,
                                     lineHeight = 18.sp
@@ -184,7 +180,7 @@ fun LogsScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (isError) "⚠️ AUTOMATION ERROR" else "🚀 AUTO-PUBLISHED",
+                                            text = if (isError) "⚠️ GENERATION ERROR" else "✅ VIDEO GENERATED",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.sp,
                                             color = if (isError) ErrorRed else CyberCyan
@@ -224,10 +220,7 @@ fun LogsScreen(
                                             SuggestionChip(
                                                 onClick = {},
                                                 label = {
-                                                    Text(
-                                                        "📁 ${item.category}" + if (!item.categoryId.isNullOrBlank()) " (${item.categoryId})" else "",
-                                                        fontSize = 10.sp
-                                                    )
+                                                    Text("📁 ${item.category}", fontSize = 10.sp)
                                                 },
                                                 colors = SuggestionChipDefaults.suggestionChipColors(containerColor = DarkBackground)
                                             )
@@ -241,23 +234,6 @@ fun LogsScreen(
                                         }
                                     }
 
-                                    if (!item.youtubeUrl.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Button(
-                                            onClick = {
-                                                try {
-                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.youtubeUrl))
-                                                    context.startActivity(intent)
-                                                } catch (e: Exception) {}
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = CyberCyan, contentColor = Color.Black),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Watch Video on YouTube", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
                                 }
                             }
                         }

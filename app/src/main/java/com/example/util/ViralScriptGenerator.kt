@@ -26,7 +26,7 @@ data class ViralScriptBreakdown(
 object ViralScriptGenerator {
 
     /**
-     * Generates a complete Viral Script, Hook, and Scene-by-Scene Breakdown for YouTube Videos/Shorts.
+     * Generates a short-form video script, hook, and scene-by-scene breakdown.
      * Fully autonomous, zero manual click needed.
      */
     fun generateViralScript(
@@ -253,8 +253,8 @@ object ViralScriptGenerator {
                         SceneBreakdownItem(
                             sceneNumber = 4,
                             timestampRange = "00:40 - 00:60",
-                            visualCue = "Dramatic slow pull-back into darkness, glowing channel subscribe button graphic pulse.",
-                            voiceoverText = "What is your theory? Drop your thoughts in the comments below and hit subscribe for daily 60-second deep dives!",
+                            visualCue = "Dramatic slow pull-back into darkness, fading into a clean closing title card.",
+                            voiceoverText = "What is your theory? Share your thoughts and keep exploring this topic!",
                             sfxCue = "🔔 Subtle Bell Chime + Outro Fade",
                             retentionAngle = "Conversion Call to Action"
                         )
@@ -264,7 +264,9 @@ object ViralScriptGenerator {
         }
 
         val fullText = scenes.joinToString(" ") { it.voiceoverText }
-        val visualPrompt = ThumbnailBannerPromptGenerator.generateVisualPrompts(cleanTopic, category).mainVisualPrompt
+        val visualPrompt =
+            "Cinematic vertical video scene about $cleanTopic in the $category category, " +
+                "detailed composition, expressive lighting, realistic visual storytelling, no text."
 
         return ViralScriptBreakdown(
             topic = cleanTopic,

@@ -7,8 +7,6 @@ import com.example.data.local.VideoDatabase
 import com.example.data.network.ApiClient
 import com.example.data.repository.VideoRepository
 import com.example.notification.PipelineNotificationManager
-import com.example.worker.AutomationSchedulerManager
-import com.google.firebase.FirebaseApp
 
 class MainApplication : Application() {
 
@@ -45,12 +43,6 @@ class MainApplication : Application() {
         }
 
         try {
-            FirebaseApp.initializeApp(this)
-        } catch (e: Exception) {
-            Log.e("MainApplication", "FirebaseApp init failed", e)
-        }
-
-        try {
             val wasmCacheDir = java.io.File(cacheDir, "WebView/Default/HTTP Cache/Code Cache/wasm")
             if (!wasmCacheDir.exists()) {
                 wasmCacheDir.mkdirs()
@@ -59,33 +51,46 @@ class MainApplication : Application() {
             Log.w("MainApplication", "Could not pre-create wasm cache dir", e)
         }
 
+        clearRemovedAccountData()
+
         database = VideoDatabase.getDatabase(this)
         settingsManager = SettingsManager(this)
         apiClient = ApiClient(settingsManager)
         videoRepository = VideoRepository(this, apiClient, database.projectDao(), settingsManager)
 
         PipelineNotificationManager.createNotificationChannel(this)
+    }
 
-        try {
-            com.example.util.GoogleSignInHelper.checkExistingUser(this)
-        } catch (e: Exception) {
-            Log.w("MainApplication", "Check existing user notice: ${e.message}")
+    private fun clearRemovedAccountData() {
+        val cleanupPreferences = getSharedPreferences("glitchos_privacy_cleanup", MODE_PRIVATE)
+        if (!cleanupPreferences.getBoolean("legacy_channel_data_removed_v1", false)) {
+            PipelineNotificationManager.clearNotificationHistory(this)
+            cleanupPreferences.edit().putBoolean("legacy_channel_data_removed_v1", true).apply()
         }
 
-        val settings = settingsManager.settingsFlow.value
-        if (settings.autoPublishEnabled) {
-            try {
-                AutomationSchedulerManager.scheduleRecurringAutomation(
-                    context = this,
-                    intervalHours = settings.scheduleIntervalHours,
-                    delaySeconds = settings.scheduleDelaySeconds,
-                    category = settings.autoCategory,
-                    language = settings.defaultLanguage,
-                    autoUpload = true
-                )
-            } catch (e: Exception) {
-                Log.w("MainApplication", "WorkManager scheduling on app start skipped: ${e.message}")
+        getSharedPreferences("youtube_auth_db", MODE_PRIVATE).edit().clear().apply()
+        getSharedPreferences("ai_video_settings", MODE_PRIVATE).edit()
+            .remove("api_key")
+            .remove("auto_publish_enabled")
+            .remove("default_category_id")
+            .apply()
+
+        val sharedPrefsDirectory = java.io.File(applicationInfo.dataDir, "shared_prefs")
+        val oldFirebasePrefs = sharedPrefsDirectory.listFiles()
+            .orEmpty()
+            .filter { it.name.startsWith("com.google.firebase.auth") }
+        oldFirebasePrefs.forEach { file ->
+            if (!file.delete()) {
+                Log.w("MainApplication", "Could not remove legacy account preferences: ${file.name}")
             }
         }
+
+        databaseList()
+            .filter { it.startsWith("firestore.") || it == "glitchos_app_database" }
+            .forEach { databaseName ->
+                if (!deleteDatabase(databaseName)) {
+                    Log.w("MainApplication", "Could not remove legacy private database: $databaseName")
+                }
+            }
     }
 }

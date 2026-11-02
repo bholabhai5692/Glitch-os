@@ -15,7 +15,8 @@ data class AppDiagnosticInfo(
     val versionName: String?,
     val versionCode: Long,
     val targetSdk: Int,
-    val status: String
+    val status: String,
+    val message: String? = null
 )
 
 data class CheckResult(

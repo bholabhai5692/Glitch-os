@@ -9,7 +9,7 @@ data class VideoRequest(
     val targetDurationSec: Int = 60,
     val style: String = "cinematic",
     val aspect: String = "9:16",
-    val platform: String = "YouTube Shorts",
+    val platform: String = "Vertical short video",
     val audience: String = "General",
     val voiceName: String = "hi-IN-MadhurNeural",
     val imageDurationSec: Int = 3,
@@ -36,12 +36,7 @@ data class VideoMetadata(
     val summary: String,
     val description: String,
     val story: String,
-    val narration: String,
-    val tags: List<String>,
-    val hashtags: List<String>,
-    val titleVariations: List<String> = emptyList(),
-    val seoScore: Int? = null,
-    val richDescription: String = ""
+    val narration: String
 )
 
 data class VisualPrompt(

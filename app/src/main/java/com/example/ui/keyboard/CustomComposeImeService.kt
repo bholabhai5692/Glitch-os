@@ -93,11 +93,13 @@ class CustomComposeImeService : InputMethodService(),
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         keyboardStateHolder.activeInputConnection = currentInputConnection
+        keyboardStateHolder.updateEditorInfo(attribute)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         keyboardStateHolder.activeInputConnection = currentInputConnection
+        keyboardStateHolder.updateEditorInfo(info)
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
