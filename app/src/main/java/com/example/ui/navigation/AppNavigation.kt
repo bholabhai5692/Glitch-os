@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AdUnits
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Place
@@ -45,7 +46,8 @@ fun AppNavigation(viewModel: MainViewModel) {
                     onNavigateToVpnShield = { navController.navigate(NavRoute.VpnShield.route) },
                     onNavigateToRecovery = { navController.navigate(NavRoute.Recovery.route) },
                     onNavigateToCreatorAssistant = { navController.navigate(NavRoute.CreatorAssistant.route) },
-                    onNavigateToLocation = { navController.navigate(NavRoute.Location.route) }
+                    onNavigateToLocation = { navController.navigate(NavRoute.Location.route) },
+                    onNavigateToAdProtection = { navController.navigate(NavRoute.AdProtection.route) }
                 )
             }
             composable(NavRoute.Create.route) {
@@ -129,7 +131,13 @@ fun AppNavigation(viewModel: MainViewModel) {
                 KeyboardPlaygroundScreen(onNavigateBack = { navController.popBackStack() })
             }
             composable(NavRoute.VpnShield.route) {
-                VpnShieldScreen(onNavigateBack = { navController.popBackStack() })
+                VpnShieldScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToAdProtection = { navController.navigate(NavRoute.AdProtection.route) }
+                )
+            }
+            composable(NavRoute.AdProtection.route) {
+                AdProtectionScreen(onNavigateBack = { navController.popBackStack() })
             }
             composable(NavRoute.Recovery.route) {
                 RecoverScreen(onNavigateBack = { navController.popBackStack() })
@@ -155,6 +163,7 @@ fun AppNavigation(viewModel: MainViewModel) {
                 AppToolDestination("Video library", Icons.Default.VideoLibrary, NavRoute.Library.route),
                 AppToolDestination("Keyboard tools", Icons.Default.Keyboard, NavRoute.KeyboardPlayground.route),
                 AppToolDestination("VPN settings", Icons.Default.VpnKey, NavRoute.VpnShield.route),
+                AppToolDestination("Ad protection", Icons.Default.AdUnits, NavRoute.AdProtection.route),
                 AppToolDestination("Recover files", Icons.Default.Restore, NavRoute.Recovery.route),
                 AppToolDestination("Location", Icons.Default.Place, NavRoute.Location.route),
                 AppToolDestination("Creator assistant", Icons.Default.AutoAwesome, NavRoute.CreatorAssistant.route),

@@ -62,6 +62,10 @@ class AdControlAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.eventType !in OBSERVED_EVENT_TYPES) return
+        val eventPackage = event.packageName?.toString() ?: return
+        if (eventPackage !in AdProtectionStore.supportedApps ||
+            !AdProtectionStore.isAppEnabled(this, eventPackage)
+        ) return
 
         val now = SystemClock.uptimeMillis()
         if (now - lastScanAt < MIN_SCAN_INTERVAL_MS) return
@@ -69,7 +73,6 @@ class AdControlAccessibilityService : AccessibilityService() {
 
         val root = rootInActiveWindow ?: return
         try {
-            val eventPackage = event.packageName?.toString()
             val rootPackage = root.packageName?.toString()
             if (eventPackage.isNullOrBlank() || eventPackage != rootPackage) return
 
@@ -109,16 +112,22 @@ class AdControlAccessibilityService : AccessibilityService() {
         if (mutedPackageName != packageName) {
             if (findAndClick(nodes, AdUiAction.MUTE, isVideoAdContext = true)) {
                 mutedPackageName = packageName
+                AdProtectionStore.recordAdAction(this, packageName, AdUiAction.MUTE)
             }
         }
 
         if (windowId == lastAdActionWindowId && now - lastAdActionAt < MIN_SCAN_INTERVAL_MS * 4) return
 
-        val acted = findAndClick(nodes, AdUiAction.SKIP, isVideoAdContext = true) ||
-            findAndClick(nodes, AdUiAction.CLOSE, isVideoAdContext = true)
+        val action = when {
+            findAndClick(nodes, AdUiAction.SKIP, isVideoAdContext = true) -> AdUiAction.SKIP
+            findAndClick(nodes, AdUiAction.CLOSE, isVideoAdContext = true) -> AdUiAction.CLOSE
+            else -> null
+        }
+        val acted = action != null
         if (acted) {
             lastAdActionAt = now
             lastAdActionWindowId = windowId
+            action?.let { AdProtectionStore.recordAdAction(this, packageName, it) }
         }
     }
 

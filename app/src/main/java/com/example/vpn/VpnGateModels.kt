@@ -60,24 +60,3 @@ enum class PingQuality {
     FAIR,
     HIGH_LATENCY
 }
-
-enum class VpnConnectionState {
-    DISCONNECTED,
-    CONNECTING,
-    CONNECTED,
-    DISCONNECTING,
-    ERROR
-}
-
-data class VpnShieldStatus(
-    val state: VpnConnectionState = VpnConnectionState.DISCONNECTED,
-    val currentServer: VpnServer? = null,
-    val connectedSinceMs: Long = 0L,
-    val downloadSpeedMbps: Double = 0.0,
-    val uploadSpeedMbps: Double = 0.0,
-    val totalBytesTransferred: Long = 0L,
-    val maskedIp: String = "",
-    val dnsLeakProtected: Boolean = true,
-    val killSwitchActive: Boolean = true,
-    val errorMessage: String? = null
-)

@@ -11,7 +11,7 @@ class AdUiActionClassifierTest {
         assertTrue(AdUiActionClassifier.isVideoAdContext(listOf("Advertisement")))
         assertTrue(AdUiActionClassifier.isVideoAdContext(listOf("Ad 1 of 2")))
         assertTrue(AdUiActionClassifier.isVideoAdContext(listOf("Skip ad")))
-        assertFalse(AdUiActionClassifier.isVideoAdContext(listOf("Video", "Sponsored post")))
+        assertTrue(AdUiActionClassifier.isVideoAdContext(listOf("Video", "Sponsored post")))
         assertFalse(AdUiActionClassifier.isVideoAdContext(listOf("Skip intro", "Unmute")))
     }
 

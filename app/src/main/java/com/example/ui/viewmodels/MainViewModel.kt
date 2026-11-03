@@ -10,6 +10,7 @@ import com.example.data.model.*
 import com.example.data.repository.Resource
 import com.example.pipeline.dom.DomAnimation10ScenePackage
 import com.example.pipeline.VideoRequest
+import com.example.worker.AutoGenerationLoopManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,6 +37,16 @@ data class CreateJobUiState(
     val createdJobId: String? = null
 )
 
+data class AutoGenerationLoopUiState(
+    val isScheduled: Boolean = false,
+    val isUpdating: Boolean = false,
+    val intervalMinutes: Int = 60,
+    val error: String? = null
+)
+
+private val imageGenerationPattern = Regex("Generating image (\\d+)/(\\d+)")
+private val imagePreviewPattern = Regex("\\[IMAGE_PREVIEW] (\\d+)/(\\d+) (.+)")
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as MainApplication
     private val repository = app.videoRepository
@@ -48,6 +59,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _createJobState = MutableStateFlow(CreateJobUiState())
     val createJobState: StateFlow<CreateJobUiState> = _createJobState.asStateFlow()
+
+    private val _autoGenerationLoopState = MutableStateFlow(AutoGenerationLoopUiState())
+    val autoGenerationLoopState: StateFlow<AutoGenerationLoopUiState> = _autoGenerationLoopState.asStateFlow()
 
     private val _currentJobProgress = MutableStateFlow<JobStatusResponse?>(null)
     val currentJobProgress: StateFlow<JobStatusResponse?> = _currentJobProgress.asStateFlow()
@@ -75,6 +89,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         checkServerHealth()
         loadProjects()
         observeLocalDatabase()
+        refreshAutoGenerationLoopStatus()
+    }
+
+    fun startAutoGenerationLoop(request: CreateJobRequest, intervalMinutes: Int) {
+        if (intervalMinutes < AutoGenerationLoopManager.MIN_INTERVAL_MINUTES) {
+            _autoGenerationLoopState.update {
+                it.copy(error = "Background interval must be at least 15 minutes.")
+            }
+            return
+        }
+        if (intervalMinutes > AutoGenerationLoopManager.MAX_INTERVAL_MINUTES) {
+            _autoGenerationLoopState.update {
+                it.copy(error = "Background interval cannot exceed 1440 minutes.")
+            }
+            return
+        }
+        viewModelScope.launch {
+            _autoGenerationLoopState.update { it.copy(isUpdating = true, error = null) }
+            try {
+                withContext(Dispatchers.IO) {
+                    AutoGenerationLoopManager.schedule(app, request, intervalMinutes)
+                }
+                _autoGenerationLoopState.value = AutoGenerationLoopUiState(
+                    isScheduled = true,
+                    intervalMinutes = intervalMinutes.coerceAtMost(AutoGenerationLoopManager.MAX_INTERVAL_MINUTES)
+                )
+            } catch (error: Exception) {
+                _autoGenerationLoopState.update {
+                    it.copy(isUpdating = false, error = error.localizedMessage ?: "Could not schedule auto-generation.")
+                }
+            }
+        }
+    }
+
+    fun stopAutoGenerationLoop() {
+        viewModelScope.launch {
+            _autoGenerationLoopState.update { it.copy(isUpdating = true, error = null) }
+            try {
+                withContext(Dispatchers.IO) { AutoGenerationLoopManager.stop(app) }
+                _autoGenerationLoopState.value = AutoGenerationLoopUiState()
+            } catch (error: Exception) {
+                _autoGenerationLoopState.update {
+                    it.copy(isUpdating = false, error = error.localizedMessage ?: "Could not stop auto-generation.")
+                }
+            }
+        }
+    }
+
+    private fun refreshAutoGenerationLoopStatus() {
+        viewModelScope.launch {
+            runCatching { AutoGenerationLoopManager.getStatus(app) }
+                .onSuccess { status ->
+                    _autoGenerationLoopState.value = AutoGenerationLoopUiState(
+                        isScheduled = status.isScheduled,
+                        intervalMinutes = status.intervalMinutes
+                    )
+                }
+                .onFailure { error ->
+                    _autoGenerationLoopState.update {
+                        it.copy(error = error.localizedMessage ?: "Could not read auto-generation status.")
+                    }
+                }
+        }
     }
 
     private fun observeLocalDatabase() {
@@ -312,16 +389,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     customHook = request.customHook
                 )
                 val result = repository.runNativePipeline(requestForPipeline) { progress, status ->
+                    val previous = _currentJobProgress.value
+                    val imagePreview = imagePreviewPattern.find(status)
+                    val imageGeneration = imageGenerationPattern.find(status)
+                    val currentImage = imagePreview?.groupValues?.get(1)?.toIntOrNull()
+                        ?: imageGeneration?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
+                        ?: previous?.currentImage
+                        ?: 0
+                    val totalImages = imagePreview?.groupValues?.get(2)?.toIntOrNull()
+                        ?: imageGeneration?.groupValues?.get(2)?.toIntOrNull()
+                        ?: previous?.totalImages
+                        ?: 0
+                    val imagePath = imagePreview?.groupValues?.get(3)
+                    val imagePreviews = if (imagePath != null) {
+                        (previous?.imagePreviews.orEmpty() + imagePath).distinct()
+                    } else {
+                        previous?.imagePreviews.orEmpty()
+                    }
+                    val visibleStatus = if (imagePreview != null) {
+                        "Image $currentImage of $totalImages ready"
+                    } else {
+                        status
+                    }
                     _currentJobProgress.value = JobStatusResponse(
                         id = jobId,
                         status = "processing",
                         progress = progress,
-                        step = status
+                        step = visibleStatus,
+                        currentImage = currentImage,
+                        totalImages = totalImages,
+                        imagePreviews = imagePreviews
                     )
                     com.example.notification.PipelineNotificationManager.showProgressNotification(
                         context = app,
                         title = "Generating video",
-                        statusMessage = "[$progress%] $status",
+                        statusMessage = "[$progress%] $visibleStatus",
                         progressPercent = progress
                     )
                 }
@@ -335,9 +437,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         videoUrl = "file://${result.video.absolutePath}",
                         thumbnailUrl = "file://${result.thumbnail.absolutePath}",
                         title = result.metadata.title,
+                        category = request.category,
+                        summary = result.metadata.summary,
+                        description = result.metadata.description,
                         visualCount = result.visualCount,
                         audioDurationSec = result.audioDuration
-                    )
+                    ),
+                    currentImage = _currentJobProgress.value?.currentImage ?: result.visualCount,
+                    totalImages = _currentJobProgress.value?.totalImages ?: result.visualCount,
+                    imagePreviews = _currentJobProgress.value?.imagePreviews.orEmpty()
                 )
                 com.example.notification.PipelineNotificationManager.showCompletionNotification(
                     context = app,

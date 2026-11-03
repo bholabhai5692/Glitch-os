@@ -21,6 +21,7 @@ sealed class NavRoute(val route: String) {
     object Logs : NavRoute("logs")
     object KeyboardPlayground : NavRoute("keyboard_playground")
     object VpnShield : NavRoute("vpn_shield")
+    object AdProtection : NavRoute("ad_protection")
     object Recovery : NavRoute("recovery")
     object CreatorAssistant : NavRoute("creator_assistant")
     object Location : NavRoute("location")

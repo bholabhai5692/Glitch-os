@@ -29,12 +29,26 @@ internal object AdUiActionClassifier {
         return normalized == "advertisement" ||
             normalized.startsWith("advertisement ") ||
             normalized.startsWith("video ad") ||
+            normalized == "sponsored" ||
+            normalized.startsWith("sponsored ") ||
+            normalized.startsWith("sponsored •") ||
             AD_SEQUENCE.matches(normalized)
     }
 
-    private fun isSkipAdLabel(label: String): Boolean = normalize(label) in SKIP_LABELS
+    private fun isSkipAdLabel(label: String): Boolean {
+        val normalized = normalize(label)
+        return normalized in SKIP_LABELS ||
+            normalized.startsWith("skip ad in ") ||
+            normalized.startsWith("skip this ad in ") ||
+            normalized.startsWith("skip advertisement in ")
+    }
 
-    private fun isCloseAdLabel(label: String): Boolean = normalize(label) in CLOSE_LABELS
+    private fun isCloseAdLabel(label: String): Boolean {
+        val normalized = normalize(label)
+        return normalized in CLOSE_LABELS ||
+            normalized.startsWith("close ad ") ||
+            normalized.startsWith("close advertisement ")
+    }
 
     private fun normalize(label: String): String =
         label.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
@@ -42,9 +56,11 @@ internal object AdUiActionClassifier {
     private val AD_SEQUENCE = Regex("""ad\s+\d+\s+of\s+\d+""")
     private val SKIP_LABELS = setOf(
         "skip ad",
+        "skip ads",
         "skip this ad",
         "skip video ad",
-        "skip advertisement"
+        "skip advertisement",
+        "skip this advertisement"
     )
     private val CLOSE_LABELS = setOf(
         "close ad",

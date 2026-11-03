@@ -5,7 +5,7 @@ object PhotoRecNative {
         System.loadLibrary("photorec_jni")
     }
 
-    external fun runScan(sourceFd: Int, outputDirectory: String): Int
+    external fun runScan(sourceFd: Int, outputDirectory: String, progressLogPath: String): Int
 
     external fun cancelScan()
 }

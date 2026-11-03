@@ -18,7 +18,6 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import com.example.util.IpProxyRotator
 
 class DeepAIWebViewClient(
     private val webView: WebView?
@@ -157,16 +156,8 @@ class DeepAIWebViewClient(
                 lastError = e
                 log("[GLITCH Quantum Vision ERROR] Attempt ${attempt + 1} failed: ${e.message}")
                 if (attempt < 2) {
-                    val rotatedVpn = try {
-                        val ctx = webView?.context
-                        if (ctx != null) com.example.vpn.VpnGateManager.switchToNextServer(ctx) else null
-                    } catch (_: Exception) { null }
-
-                    // Auto Proxy Node Swap with 0ms Delay Retry
-                    val spoofedIp = IpProxyRotator.rotateNodeAndLog { msg -> log(msg) }
-                    val vpnMsg = if (rotatedVpn != null) " • VPN Auto-Rotated to ${rotatedVpn.countryLong} (${rotatedVpn.ip})" else ""
-                    log("🛡️ [AUTO_VPN_TRIGGER] Image Pipeline Rate-Limit! Auto-swapped VPN$vpnMsg (Spoofed IP: $spoofedIp)")
-                    delay(100L) // 0ms effective delay, brief pause for WebView reset
+                    log("Retrying over the current network; this app does not switch VPN servers.")
+                    delay(100L)
                 }
             }
         }
@@ -498,7 +489,7 @@ class DeepAIWebViewClient(
             return@withContext
         }
 
-        val connection = com.example.util.IpProxyRotator.openConnectionWithProxy(imageUrl)
+        val connection = URL(imageUrl).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "GET"
             val cookies = CookieManager.getInstance().getCookie(imageUrl)

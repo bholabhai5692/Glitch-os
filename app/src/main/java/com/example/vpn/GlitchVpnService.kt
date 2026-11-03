@@ -55,22 +55,9 @@ class GlitchVpnService : VpnService() {
             countryCode: String,
             port: Int = 1194
         ) {
-            try {
-                val intent = Intent(context, GlitchVpnService::class.java).apply {
-                    action = ACTION_CONNECT
-                    putExtra(EXTRA_SERVER_IP, serverIp)
-                    putExtra(EXTRA_SERVER_NAME, serverName)
-                    putExtra(EXTRA_COUNTRY_CODE, countryCode)
-                    putExtra(EXTRA_PORT, port)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Cannot start foreground VPN service: ${e.message}")
-            }
+            Log.w(TAG,
+                "Remote VPN tunneling is unavailable in this app. Export the profile for $serverName to a compatible VPN app."
+            )
         }
 
         fun stopVpn(context: Context) {
@@ -121,30 +108,12 @@ class GlitchVpnService : VpnService() {
         when (action) {
             ACTION_CONNECT -> {
                 isAdBlocking = false
-                val ip = intent.getStringExtra(EXTRA_SERVER_IP) ?: ""
-                val name = intent.getStringExtra(EXTRA_SERVER_NAME) ?: "Global Gateway"
-                val country = intent.getStringExtra(EXTRA_COUNTRY_CODE) ?: "GLOBAL"
-                val port = intent.getIntExtra(EXTRA_PORT, 1194)
-
-                currentServerIp = ip
-                currentServerName = name
-                currentCountryCode = country
-
-                try {
-                    val notif = buildVpnNotification("Connecting to $name ($ip)...")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        startForeground(
-                            NOTIFICATION_ID,
-                            notif,
-                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                        )
-                    } else {
-                        startForeground(NOTIFICATION_ID, notif)
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "startForeground failed: ${e.message}")
-                }
-                connectTunnel(ip, name, country, port)
+                disconnectTunnel()
+                updateStatusDisconnected(
+                    "Remote VPN tunneling is not implemented. Export the profile to a compatible VPN app."
+                )
+                stopSelf(startId)
+                return START_NOT_STICKY
             }
             ACTION_START_ADBLOCK -> {
                 try {
@@ -290,6 +259,7 @@ class GlitchVpnService : VpnService() {
         val outputStream = FileOutputStream(pfd.fileDescriptor)
         val packet = ByteArray(32_767)
         val matcher = AdBlockDomainMatcher.default()
+        var pendingBlockedLookups = 0L
 
         try {
             while (isActive && isRunning && isAdBlocking) {
@@ -297,7 +267,13 @@ class GlitchVpnService : VpnService() {
                 if (length <= 0) continue
 
                 val query = DnsPacketCodec.parseIpv4DnsQuery(packet, length) ?: continue
-                val response = if (query.questionNames.any(matcher::shouldBlock)) {
+                val blocked = query.questionNames.any(matcher::shouldBlock)
+                val response = if (blocked) {
+                    pendingBlockedLookups++
+                    if (pendingBlockedLookups >= 16) {
+                        AdProtectionStore.recordBlockedDnsLookups(applicationContext, pendingBlockedLookups)
+                        pendingBlockedLookups = 0
+                    }
                     DnsPacketCodec.blockedResponse(query)
                 } else {
                     val upstreamResponse = try {
@@ -318,6 +294,7 @@ class GlitchVpnService : VpnService() {
                 outputStream.write(response)
             }
         } finally {
+            AdProtectionStore.recordBlockedDnsLookups(applicationContext, pendingBlockedLookups)
             inputStream.close()
             outputStream.close()
         }
@@ -417,7 +394,7 @@ class GlitchVpnService : VpnService() {
     }
 
     private fun updateStatusDisconnected(error: String? = null) {
-        VpnGateManager.notifyServiceDisconnected(error)
+        if (!error.isNullOrBlank()) Log.w(TAG, error)
     }
 
     private fun buildVpnNotification(statusText: String): Notification {

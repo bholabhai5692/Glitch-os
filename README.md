@@ -34,6 +34,14 @@ APK output:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## Glitch OS AI chat
+
+The creator assistant identifies itself as **Glitch OS AI**, answers common
+identity questions directly, and receives app feature context plus recent chat
+messages when requesting a provider response. NoTrack may provide chat responses,
+but it is a backend service—not the assistant's identity. Video creation is a
+separate composer action; video options are available from the settings icon.
+
 ## Location testing tool
 
 The **Location** tool lets app developers and QA testers select a point on an

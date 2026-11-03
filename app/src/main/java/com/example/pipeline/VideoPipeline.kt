@@ -41,18 +41,10 @@ class VideoPipeline(
                 throw e
             } catch (e: Exception) {
                 if (!isNetworkError(e)) throw e
-                try {
-                    com.example.vpn.VpnGateManager.autoConnectFastest(context)
-                } catch (vpnEx: Exception) {
-                    // Ignore
-                }
                 if (attempts <= maxRetries) {
-                    com.example.util.IpProxyRotator.rotateNodeAndLog { logMsg ->
-                        onProgress(progressPercentage, logMsg)
-                    }
                     onProgress(
                         progressPercentage,
-                        "🛡️ [VPN_AUTO_SHIELD & IP_ROTATION] Error detected: ${e.localizedMessage?.take(50)}. VPN activated and proxy IP swapped ($attempts/$maxRetries). Retrying..."
+                        "Network request failed: ${e.localizedMessage?.take(50) ?: "connection error"}. Retrying on the current connection ($attempts/$maxRetries)."
                     )
                     delay(100)
                 } else {
@@ -261,7 +253,7 @@ class VideoPipeline(
                 }
 
                 if (output.exists() && output.length() > 500) {
-                    onProgress(progress, "[IMAGE_PREVIEW] ${output.absolutePath}")
+                    onProgress(progress, "[IMAGE_PREVIEW] ${index + 1}/$visualCount ${output.absolutePath}")
                 }
                 generatedImages.add(output)
             }
@@ -303,7 +295,7 @@ class VideoPipeline(
                 }
 
                 if (output.exists() && output.length() > 500) {
-                    onProgress(progress, "[IMAGE_PREVIEW] ${output.absolutePath}")
+                    onProgress(progress, "[IMAGE_PREVIEW] ${index + 1}/$visualCount ${output.absolutePath}")
                 }
                 generatedImages.add(output)
             }

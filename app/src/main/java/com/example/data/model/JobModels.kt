@@ -47,6 +47,7 @@ data class JobStatusResponse(
     @Json(name = "step") val step: String? = null,
     @Json(name = "currentImage") val currentImage: Int = 0,
     @Json(name = "totalImages") val totalImages: Int = 0,
+    @Json(name = "imagePreviews") val imagePreviews: List<String> = emptyList(),
     @Json(name = "error") val error: JobError? = null,
     @Json(name = "createdAt") val createdAt: String? = null,
     @Json(name = "updatedAt") val updatedAt: String? = null,
@@ -64,6 +65,9 @@ data class JobOutput(
     @Json(name = "videoUrl") val videoUrl: String? = null,
     @Json(name = "thumbnailUrl") val thumbnailUrl: String? = null,
     @Json(name = "title") val title: String? = null,
+    @Json(name = "category") val category: String? = null,
+    @Json(name = "summary") val summary: String? = null,
+    @Json(name = "description") val description: String? = null,
     @Json(name = "visualCount") val visualCount: Int? = null,
     @Json(name = "audioDurationSec") val audioDurationSec: Double? = null
 )

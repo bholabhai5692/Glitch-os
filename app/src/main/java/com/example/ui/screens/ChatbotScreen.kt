@@ -1,23 +1,16 @@
 package com.example.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -30,8 +23,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,17 +44,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.text.SimpleDateFormat
-import java.util.*
+import java.util.UUID
 
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val text: String,
-    val isUser: Boolean,
-    val timestamp: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+    val isUser: Boolean
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatbotScreen(
     viewModel: MainViewModel? = null,
@@ -114,7 +108,11 @@ fun ChatbotScreen(
         mutableStateOf(
             listOf(
                 ChatMessage(
-                    text = "Hello! Enter a topic or request and I can help with creator workflows when the configured AI provider is available.",
+                    text = if (savedSettings.defaultLanguage.startsWith("Hindi", true)) {
+                        "Namaste! Main Glitch OS AI hoon. Video ideas, scripts aur app ke tools ke baare mein poochhein."
+                    } else {
+                        "Hi, I’m Glitch OS AI. Ask me about video ideas, scripts, or the tools in this app."
+                    },
                     isUser = false
                 )
             )
@@ -124,6 +122,7 @@ fun ChatbotScreen(
     var inputText by remember { mutableStateOf("") }
     var isGenerating by remember { mutableStateOf(false) }
     var notrackClient by remember { mutableStateOf<NotrackWebViewClient?>(null) }
+    var showVideoSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         try {
@@ -215,7 +214,9 @@ fun ChatbotScreen(
 
     val sendMessage = { textToSend: String ->
         if (textToSend.isNotBlank() && !isGenerating) {
-            val isStoryIntent = textToSend.contains("10-Scene", ignoreCase = true) || textToSend.contains("10 scene", ignoreCase = true)
+            val isStoryIntent = textToSend.contains("10-scene", ignoreCase = true) ||
+                textToSend.contains("10 scene", ignoreCase = true)
+            val recentMessages = messages.takeLast(8)
 
             val userMsg = ChatMessage(text = textToSend, isUser = true)
             messages = messages + userMsg
@@ -224,43 +225,31 @@ fun ChatbotScreen(
 
             scope.launch {
                 listState.animateScrollToItem(messages.size)
-                val reply = withContext(Dispatchers.IO) {
-                    if (isStoryIntent) {
-                        val prompt = StoryPromptEngine.build10SceneEmotionalPrompt(textToSend)
-                        fetch10SceneStoryJson(prompt, notrackClient)
-                    } else {
-                        generateAiChatbotResponse(textToSend, notrackClient)
-                    }
-                }
-                messages = messages + ChatMessage(text = reply, isUser = false)
-                isGenerating = false
                 try {
-                    listState.animateScrollToItem(messages.size)
-                } catch (_: Exception) {}
-            }
-        }
-    }
-
-    val generate10SceneStory = { topic: String ->
-        if (topic.isBlank()) {
-            messages = messages + ChatMessage(
-                text = "Enter a story topic before requesting a story.",
-                isUser = false
-            )
-        } else if (!isGenerating) {
-            val userDisplayMsg = "🎬 Generate 10-Scene Emotional Story in JSON: \"${topic.trim()}\""
-            messages = messages + ChatMessage(text = userDisplayMsg, isUser = true)
-            inputText = ""
-            isGenerating = true
-
-            scope.launch {
-                listState.animateScrollToItem(messages.size)
-                val reply = withContext(Dispatchers.IO) {
-                    val prompt = StoryPromptEngine.build10SceneEmotionalPrompt(topic.trim())
-                    fetch10SceneStoryJson(prompt, notrackClient)
+                    val reply = if (GlitchOsAssistantPrompt.isIdentityQuestion(textToSend)) {
+                        GlitchOsAssistantPrompt.identityReply(textToSend)
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            if (isStoryIntent) {
+                                val prompt = StoryPromptEngine.build10SceneEmotionalPrompt(textToSend)
+                                fetch10SceneStoryJson(prompt, notrackClient)
+                            } else {
+                                generateAiChatbotResponse(textToSend, notrackClient, recentMessages)
+                            }
+                        }
+                    }
+                    messages = messages + ChatMessage(text = reply, isUser = false)
+                } catch (exception: kotlinx.coroutines.CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    android.util.Log.e("ChatbotScreen", "Chat response failed.", exception)
+                    messages = messages + ChatMessage(
+                        text = "I couldn't get a response right now. Please try again.",
+                        isUser = false
+                    )
+                } finally {
+                    isGenerating = false
                 }
-                messages = messages + ChatMessage(text = reply, isUser = false)
-                isGenerating = false
                 try {
                     listState.animateScrollToItem(messages.size)
                 } catch (_: Exception) {}
@@ -275,25 +264,32 @@ fun ChatbotScreen(
                     title = {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(10.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(NeonGreen)
-                            )
-                            Column {
+                                    .background(CyberCyan.copy(alpha = 0.14f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = CyberCyan,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
-                                    text = "AI CHATBOT ASSISTANT",
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 16.sp,
-                                    color = TextPrimary,
-                                    letterSpacing = 0.5.sp
+                                    text = "Glitch OS AI",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 18.sp,
+                                    color = TextPrimary
                                 )
                                 Text(
-                                    text = "Powered by Glitch OS & NoTrack Live Engine",
-                                    fontSize = 11.sp,
+                                    text = "Creator assistant",
+                                    fontSize = 12.sp,
                                     color = TextSecondary
                                 )
                             }
@@ -305,6 +301,18 @@ fun ChatbotScreen(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
                                 tint = TextPrimary
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { showVideoSettings = true },
+                            modifier = Modifier.testTag("chatbot_video_settings_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Video settings",
+                                tint = TextSecondary
                             )
                         }
                     },
@@ -320,98 +328,6 @@ fun ChatbotScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 12.dp)
         ) {
-            // One-click generation uses the topic and video-agent settings selected below.
-            Surface(
-                onClick = { run10SceneVideoPipeline(inputText) },
-                enabled = !isGenerating && inputText.isNotBlank(),
-                shape = RoundedCornerShape(16.dp),
-                color = NeonPink.copy(alpha = 0.2f),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, NeonPink),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .height(56.dp)
-                    .testTag("one_click_autonomous_video_button")
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "1-Click Generate",
-                        tint = NeonPink,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(horizontalAlignment = Alignment.Start) {
-                        Text(
-                            text = "⚡ GENERATE COMPLETE 10-SCENE VIDEO",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            color = NeonPink,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = "Notrack storyboard + 10 parallel animations + narration + MP4",
-                            fontSize = 10.sp,
-                            color = TextSecondary
-                        )
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 6.dp)
-            ) {
-                Text(
-                    text = "VIDEO AGENT SETTINGS",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CyberCyan
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ChatbotSettingDropdown("Language", selectedLanguage, languageOptions) {
-                        selectedLanguage = it
-                        selectedVoice = com.example.util.EdgeNeuralTtsService.AVAILABLE_VOICES
-                            .firstOrNull { voice ->
-                                voice.language.startsWith(it, ignoreCase = true)
-                            }?.id.orEmpty()
-                    }
-                    ChatbotSettingDropdown("Category", selectedCategory, categoryOptions) {
-                        selectedCategory = it
-                    }
-                    ChatbotSettingDropdown("Duration", "${selectedDuration}s", durationOptions.map { "${it}s" }) {
-                        selectedDuration = it.removeSuffix("s").toInt()
-                    }
-                    ChatbotSettingDropdown("Voice", selectedVoice, voiceOptions) {
-                        selectedVoice = it
-                    }
-                    ChatbotSettingDropdown("Aspect", selectedAspect, listOf("9:16", "16:9", "1:1")) {
-                        selectedAspect = it
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Captions", fontSize = 11.sp, color = TextSecondary)
-                        Switch(
-                            checked = showCaptions,
-                            onCheckedChange = { showCaptions = it },
-                            modifier = Modifier.height(32.dp)
-                        )
-                    }
-                }
-            }
-
             // Chat Messages List
             Box(
                 modifier = Modifier
@@ -436,7 +352,7 @@ fun ChatbotScreen(
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
                                     color = DarkSurface,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, NeonGreen.copy(alpha = 0.3f))
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(12.dp),
@@ -449,7 +365,7 @@ fun ChatbotScreen(
                                             strokeWidth = 2.dp
                                         )
                                         Text(
-                                            text = "Generating storyboard, scene animations, voiceover, and final video...",
+                                            text = "Glitch OS AI is working on your request…",
                                             fontSize = 13.sp,
                                             color = TextSecondary
                                         )
@@ -461,25 +377,25 @@ fun ChatbotScreen(
                 }
             }
 
-            // Bottom Input Bar with Send Button & 10-Scene Story Button
+            // Keep the composer focused on the two primary actions: chat and video creation.
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = DarkSurface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, CyberCyan.copy(alpha = 0.4f))
+                border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        placeholder = { Text("Ask chatbot or enter story topic...", color = TextSecondary) },
+                        placeholder = { Text("Message Glitch OS AI", color = TextSecondary) },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("chatbot_input"),
@@ -489,42 +405,27 @@ fun ChatbotScreen(
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary
                         ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = { sendMessage(inputText) }
+                        ),
                         maxLines = 3
                     )
 
-                    // 🎬 Prompt Engineering Action Button: 10-Scene Story Generator in JSON
-                    Surface(
-                        onClick = { generate10SceneStory(inputText) },
-                        enabled = !isGenerating,
-                        shape = RoundedCornerShape(20.dp),
-                        color = NeonPink.copy(alpha = 0.22f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, NeonPink),
+                    IconButton(
+                        onClick = { run10SceneVideoPipeline(inputText) },
+                        enabled = inputText.isNotBlank() && !isGenerating,
                         modifier = Modifier
-                            .padding(end = 6.dp)
-                            .height(40.dp)
-                            .testTag("generate_10scene_story_button")
+                            .size(40.dp)
+                            .testTag("one_click_autonomous_video_button")
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MovieFilter,
-                                contentDescription = "Generate 10-Scene Emotional Story in JSON",
-                                tint = NeonPink,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "10 Scenes",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NeonPink
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.MovieCreation,
+                            contentDescription = "Create a video from this topic",
+                            tint = if (inputText.isNotBlank()) CyberCyan else TextSecondary
+                        )
                     }
 
-                    // 📤 Standard Send / Submit Button
                     IconButton(
                         onClick = { sendMessage(inputText) },
                         enabled = inputText.isNotBlank() && !isGenerating,
@@ -540,6 +441,67 @@ fun ChatbotScreen(
                             tint = if (inputText.isNotBlank()) DarkBackground else TextSecondary
                         )
                     }
+                }
+            }
+        }
+    }
+
+    if (showVideoSettings) {
+        ModalBottomSheet(
+            onDismissRequest = { showVideoSettings = false },
+            containerColor = DarkSurface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Video settings",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "Used when you create a video from chat.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                ChatbotSettingDropdown("Language", selectedLanguage, languageOptions) {
+                    selectedLanguage = it
+                    selectedVoice = com.example.util.EdgeNeuralTtsService.AVAILABLE_VOICES
+                        .firstOrNull { voice ->
+                            voice.language.startsWith(it, ignoreCase = true)
+                        }?.id.orEmpty()
+                }
+                ChatbotSettingDropdown("Category", selectedCategory, categoryOptions) {
+                    selectedCategory = it
+                }
+                ChatbotSettingDropdown(
+                    "Duration",
+                    "${selectedDuration}s",
+                    durationOptions.map { "${it}s" }
+                ) {
+                    selectedDuration = it.removeSuffix("s").toInt()
+                }
+                ChatbotSettingDropdown("Voice", selectedVoice, voiceOptions) {
+                    selectedVoice = it
+                }
+                ChatbotSettingDropdown("Aspect ratio", selectedAspect, listOf("9:16", "16:9", "1:1")) {
+                    selectedAspect = it
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Include captions", color = TextPrimary)
+                    Switch(
+                        checked = showCaptions,
+                        onCheckedChange = { showCaptions = it }
+                    )
                 }
             }
         }
@@ -560,19 +522,29 @@ private fun ChatbotSettingDropdown(
             shape = RoundedCornerShape(8.dp),
             color = DarkSurface,
             border = androidx.compose.foundation.BorderStroke(1.dp, CyberCyan.copy(alpha = 0.35f)),
-            modifier = Modifier.widthIn(min = 94.dp, max = 150.dp).height(42.dp)
+            modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.Center
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(label, fontSize = 8.sp, color = TextSecondary, maxLines = 1)
-                Text(
-                    selected,
-                    fontSize = 10.sp,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(label, fontSize = 12.sp, color = TextSecondary, maxLines = 1)
+                    Text(
+                        selected,
+                        fontSize = 14.sp,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = TextSecondary
                 )
             }
         }
@@ -593,16 +565,15 @@ private fun ChatbotSettingDropdown(
 
 @Composable
 fun ChatBubble(message: ChatMessage) {
-    val context = LocalContext.current
     val isUser = message.isUser
     val isJsonStory = !isUser && (message.text.trim().startsWith("{") || message.text.contains("\"scenes\":"))
 
     val alignment = if (isUser) Arrangement.End else Arrangement.Start
-    val bubbleColor = if (isUser) CyberCyan.copy(alpha = 0.2f) else DarkSurface
+    val bubbleColor = if (isUser) DarkSurfaceElevated else DarkSurface
     val borderColor = when {
-        isUser -> CyberCyan
+        isUser -> CyberCyan.copy(alpha = 0.35f)
         isJsonStory -> NeonPink
-        else -> NeonGreen.copy(alpha = 0.5f)
+        else -> DarkBorder
     }
 
     Row(
@@ -641,82 +612,23 @@ fun ChatBubble(message: ChatMessage) {
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "10-SCENE EMOTIONAL STORY JSON",
+                                text = "10-scene story",
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = NeonPink,
-                                letterSpacing = 0.6.sp
-                            )
-                        }
-
-                        // Copy JSON button
-                        Button(
-                            onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("10-Scene Story JSON", message.text)
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "10-Scene JSON copied to clipboard!", Toast.LENGTH_SHORT).show()
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = NeonPink.copy(alpha = 0.25f),
-                                contentColor = NeonPink
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy",
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "Copy JSON", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Monospaced Code Box for the JSON
-                    Surface(
-                        color = Color(0xFF070B14),
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(10.dp)
-                        ) {
-                            Text(
-                                text = message.text,
-                                fontSize = 12.sp,
-                                color = Color(0xFF93C5FD),
-                                fontFamily = FontFamily.Monospace,
-                                lineHeight = 17.sp
+                                fontWeight = FontWeight.SemiBold,
+                                color = NeonPink
                             )
                         }
                     }
-
-                    // 🎬 Parsed Interactive 10-Scene Emotional Story Card Breakdown
                     ParsedStoryView(jsonText = message.text)
                 } else {
                     Text(
                         text = message.text,
                         fontSize = 14.sp,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        lineHeight = 21.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = message.timestamp,
-                    fontSize = 10.sp,
-                    color = TextSecondary,
-                    modifier = Modifier.align(Alignment.End)
-                )
             }
         }
     }
@@ -1016,12 +928,15 @@ private fun StoryBadgeChip(text: String, color: Color) {
 
 private suspend fun generateAiChatbotResponse(
     query: String,
-    client: NotrackWebViewClient?
+    client: NotrackWebViewClient?,
+    recentMessages: List<ChatMessage>
 ): String = withContext(Dispatchers.IO) {
+    val assistantPrompt = GlitchOsAssistantPrompt.buildPrompt(query, recentMessages)
+
     // 1. Try Live In-App Notrack Scraper Engine (WebView Client)
     if (client != null) {
         try {
-            val liveScraped = client.askNotrackForText(query, timeout = 40_000)
+            val liveScraped = client.askNotrackForText(assistantPrompt, timeout = 40_000)
             if (liveScraped.isNotBlank() && !liveScraped.startsWith("<!DOCTYPE", ignoreCase = true)) {
                 return@withContext liveScraped.trim()
             }
@@ -1033,7 +948,7 @@ private suspend fun generateAiChatbotResponse(
     // 2. Try Node.js Scraper Server Loopback (Port 3000)
     val candidateUrls = listOf("http://10.0.2.2:3000/chat", "http://127.0.0.1:3000/chat", "http://localhost:3000/chat")
     val jsonPayload = JSONObject().apply {
-        put("prompt", query)
+        put("prompt", assistantPrompt)
     }.toString()
 
     for (endpoint in candidateUrls) {

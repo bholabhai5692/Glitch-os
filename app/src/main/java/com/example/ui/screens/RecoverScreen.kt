@@ -9,6 +9,7 @@ import android.provider.OpenableColumns
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
+import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -54,12 +55,20 @@ import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import java.io.File
 import java.io.IOException
+import java.io.RandomAccessFile
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONException
+import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,13 +79,19 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
     var sourceName by remember { mutableStateOf<String?>(null) }
     var destinationUri by remember { mutableStateOf<Uri?>(null) }
     var isRecovering by remember { mutableStateOf(false) }
+    var isScanningNative by remember { mutableStateOf(false) }
     var isCancelling by remember { mutableStateOf(false) }
+    var scanProgress by remember { mutableStateOf<PhotoRecProgress?>(null) }
     var status by remember { mutableStateOf("Choose a disk image and a folder for recovered files.") }
 
     val sourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         sourceUri = uri
         sourceName = uri?.let { queryDisplayName(context.contentResolver, it) }
-        status = if (uri == null) "No image selected." else "Image selected. Choose an output folder to continue."
+        status = if (uri == null) {
+            "No disk image selected."
+        } else {
+            "Source selected. Use a raw disk image (not an individual media/document file); choose an output folder to continue."
+        }
     }
     val destinationPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         destinationUri = uri
@@ -131,7 +146,7 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "PhotoRec scans a user-selected disk image. The source image is opened read-only; recovered files are written to a new folder.",
+            text = "Select a raw disk image (for example .img or .dd), not a regular photo or document. The image is scanned read-only with all PhotoRec file signatures enabled. Recovered files are written to a separate folder.",
             color = TextSecondary,
             style = MaterialTheme.typography.bodyMedium
         )
@@ -166,25 +181,54 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
                 val destination = destinationUri ?: return@Button
                 coroutineScope.launch {
                     isRecovering = true
+                    isScanningNative = false
                     isCancelling = false
+                    scanProgress = null
                     status = "Preparing image..."
                     try {
-                        val recoveredCount = withContext(Dispatchers.IO) {
-                            runPhotoRec(context, image, destination)
+                        val result = withContext(Dispatchers.IO) {
+                            runPhotoRec(
+                                context = context,
+                                imageUri = image,
+                                destinationTreeUri = destination,
+                                onScanStarted = {
+                                    withContext(Dispatchers.Main) {
+                                        isScanningNative = true
+                                        status = "Scanning image..."
+                                    }
+                                },
+                                onProgress = { progress ->
+                                    withContext(Dispatchers.Main) {
+                                        scanProgress = progress
+                                        val eta = progress.estimatedTime
+                                        status = if (eta != null) {
+                                            "Scanning image: ${progress.percent}% · ${progress.filesFound} files found · ETA $eta"
+                                        } else {
+                                            "Scanning image: ${progress.percent}% · ${progress.filesFound} files found"
+                                        }
+                                    }
+                                }
+                            )
                         }
-                        status = if (recoveredCount == 0) {
+                        status = when {
+                            result.cancelled && result.recoveredFiles > 0 ->
+                                "Scan stopped. ${result.recoveredFiles} partial files were recovered and exported."
+                            result.cancelled ->
+                                "Scan stopped. No recoverable files were found before cancellation."
+                            result.recoveredFiles == 0 ->
                             "Scan finished. No recoverable files were found."
-                        } else {
-                            "Scan finished. $recoveredCount recovered files exported."
+                            else ->
+                                "Scan finished. ${result.recoveredFiles} files recovered and exported."
                         }
-                    } catch (error: PhotoRecCancelledException) {
-                        status = "Scan cancelled. Partial recovery files were discarded."
+                    } catch (error: CancellationException) {
+                        throw error
                     } catch (error: LinkageError) {
                         status = "PhotoRec native engine is unavailable: ${error.message ?: "load failure"}"
                     } catch (error: Exception) {
                         status = "Recovery failed: ${error.localizedMessage ?: "Unknown error"}"
                     } finally {
                         isRecovering = false
+                        isScanningNative = false
                         isCancelling = false
                     }
                 }
@@ -194,11 +238,20 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = DarkSurface)
         ) {
             if (isRecovering) {
-                CircularProgressIndicator(
-                    modifier = Modifier.width(18.dp),
-                    strokeWidth = 2.dp,
-                    color = NeonGreen
-                )
+                if (scanProgress == null) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.width(18.dp),
+                        strokeWidth = 2.dp,
+                        color = NeonGreen
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        progress = { (scanProgress?.percent ?: 0) / 100f },
+                        modifier = Modifier.width(18.dp),
+                        strokeWidth = 2.dp,
+                        color = NeonGreen
+                    )
+                }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "Scanning image...", color = TextPrimary)
             } else {
@@ -207,7 +260,7 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
                 Text(text = "Start PhotoRec scan", color = TextPrimary)
             }
         }
-        if (isRecovering) {
+        if (isScanningNative) {
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
@@ -229,7 +282,7 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "This uses the upstream PhotoRec recovery engine on disk images only. It cannot scan Android's protected internal partitions.",
+            text = "Supports formats PhotoRec can identify, including common photos, video, audio, documents, and archives. Recovery depends on the selected image containing data that has not been overwritten. This cannot access Android's protected internal partitions, recover cloud-only files, or guarantee every deleted file; avoid saving recovered files to the source device.",
             color = TextSecondary,
             style = MaterialTheme.typography.bodySmall
         )
@@ -237,46 +290,30 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
         }
 }
 
-private suspend fun runPhotoRec(context: Context, imageUri: Uri, destinationTreeUri: Uri): Int {
+private data class PhotoRecProgress(
+    val percent: Int,
+    val filesFound: Long,
+    val estimatedTime: String?
+)
+
+private data class PhotoRecResult(
+    val recoveredFiles: Int,
+    val cancelled: Boolean
+)
+
+private suspend fun runPhotoRec(
+    context: Context,
+    imageUri: Uri,
+    destinationTreeUri: Uri,
+    onScanStarted: suspend () -> Unit,
+    onProgress: suspend (PhotoRecProgress) -> Unit
+): PhotoRecResult {
     val outputDirectory = File(context.filesDir, "photorec/${UUID.randomUUID()}")
     if (!outputDirectory.mkdirs()) {
         throw IOException("Could not create the private recovery workspace.")
     }
 
     try {
-        val sourceDescriptor = context.contentResolver.openFileDescriptor(imageUri, "r")
-            ?: throw IOException("Could not open the selected image.")
-        val nativeResult = sourceDescriptor.use { descriptor ->
-            val seekable = try {
-                Os.lseek(descriptor.fileDescriptor, 0L, OsConstants.SEEK_CUR)
-                true
-            } catch (_: ErrnoException) {
-                false
-            }
-
-            if (seekable) {
-                runPhotoRecScan(descriptor, outputDirectory.absolutePath)
-            } else {
-                descriptor.close()
-                val cachedImage = File(context.cacheDir, "photorec-${UUID.randomUUID()}.img")
-                context.contentResolver.openInputStream(imageUri)?.use { input ->
-                    cachedImage.outputStream().use { output -> input.copyTo(output) }
-                } ?: throw IOException("Could not copy the selected image for scanning.")
-                try {
-                    ParcelFileDescriptor.open(cachedImage, ParcelFileDescriptor.MODE_READ_ONLY).use { localImage ->
-                        runPhotoRecScan(localImage, outputDirectory.absolutePath)
-                    }
-                } finally {
-                    cachedImage.delete()
-                }
-            }
-        }
-        when (nativeResult) {
-            0 -> Unit
-            -5 -> throw PhotoRecCancelledException()
-            else -> throw IOException("PhotoRec returned error code $nativeResult.")
-        }
-
         val rootDocumentId = DocumentsContract.getTreeDocumentId(destinationTreeUri)
         val rootDocumentUri = DocumentsContract.buildDocumentUriUsingTree(destinationTreeUri, rootDocumentId)
         val exportDirectory = DocumentsContract.createDocument(
@@ -286,20 +323,141 @@ private suspend fun runPhotoRec(context: Context, imageUri: Uri, destinationTree
             "PhotoRec-${System.currentTimeMillis()}"
         ) ?: throw IOException("Could not create an output folder in the selected location.")
 
-        return copyRecoveredFiles(context, outputDirectory, exportDirectory)
+        val progressLog = File(outputDirectory.parentFile, "${outputDirectory.name}-progress.jsonl")
+        val sourceDescriptor = context.contentResolver.openFileDescriptor(imageUri, "r")
+            ?: throw IOException("Could not open the selected image.")
+        val nativeResult = sourceDescriptor.use { descriptor ->
+            val seekable = try {
+                Os.lseek(descriptor.fileDescriptor, 0L, OsConstants.SEEK_SET)
+                true
+            } catch (_: ErrnoException) {
+                false
+            }
+
+            if (seekable) {
+                runPhotoRecScan(
+                    descriptor,
+                    outputDirectory,
+                    progressLog,
+                    onScanStarted,
+                    onProgress
+                )
+            } else {
+                descriptor.close()
+                val cachedImage = File(context.cacheDir, "photorec-${UUID.randomUUID()}.img")
+                context.contentResolver.openInputStream(imageUri)?.use { input ->
+                    cachedImage.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IOException("Could not copy the selected image for scanning.")
+                try {
+                    ParcelFileDescriptor.open(cachedImage, ParcelFileDescriptor.MODE_READ_ONLY).use { localImage ->
+                        runPhotoRecScan(
+                            localImage,
+                            outputDirectory,
+                            progressLog,
+                            onScanStarted,
+                            onProgress
+                        )
+                    }
+                } finally {
+                    cachedImage.delete()
+                }
+            }
+        }
+        val cancelled = nativeResult == -5
+        if (nativeResult != 0 && !cancelled) {
+            throw IOException("PhotoRec returned error code $nativeResult.")
+        }
+
+        return PhotoRecResult(
+            recoveredFiles = copyRecoveredFiles(context, outputDirectory, exportDirectory),
+            cancelled = cancelled
+        )
     } finally {
         outputDirectory.deleteRecursively()
+        File(outputDirectory.parentFile, "${outputDirectory.name}-progress.jsonl").delete()
     }
 }
 
-private fun runPhotoRecScan(descriptor: ParcelFileDescriptor, outputDirectory: String): Int {
-    val fd = descriptor.detachFd()
-    return ParcelFileDescriptor.adoptFd(fd).use {
-        PhotoRecNative.runScan(fd, outputDirectory)
+private suspend fun runPhotoRecScan(
+    descriptor: ParcelFileDescriptor,
+    outputDirectory: File,
+    progressLog: File,
+    onScanStarted: suspend () -> Unit,
+    onProgress: suspend (PhotoRecProgress) -> Unit
+): Int = coroutineScope {
+    onScanStarted()
+    val scanJob = async(Dispatchers.IO) {
+        val fd = descriptor.detachFd()
+        ParcelFileDescriptor.adoptFd(fd).use {
+            PhotoRecNative.runScan(fd, outputDirectory.absolutePath, progressLog.absolutePath)
+        }
+    }
+
+    var logPosition = 0L
+    var completed = false
+    try {
+        while (scanJob.isActive) {
+            logPosition = readPhotoRecProgress(progressLog, logPosition, onProgress)
+            if (scanJob.isActive) delay(500)
+        }
+        logPosition = readPhotoRecProgress(progressLog, logPosition, onProgress)
+        val result = scanJob.await()
+        completed = true
+        result
+    } finally {
+        if (!completed) {
+            PhotoRecNative.cancelScan()
+            withContext(NonCancellable) {
+                scanJob.join()
+            }
+        }
     }
 }
 
-private class PhotoRecCancelledException : IOException()
+private suspend fun readPhotoRecProgress(
+    progressLog: File,
+    currentPosition: Long,
+    onProgress: suspend (PhotoRecProgress) -> Unit
+): Long {
+    if (!progressLog.isFile) return currentPosition
+    var logPosition = currentPosition
+    RandomAccessFile(progressLog, "r").use { log ->
+        if (log.length() <= logPosition) return logPosition
+        log.seek(logPosition)
+        while (true) {
+            val lineStart = log.filePointer
+            val line = log.readLine() ?: break
+            if (!line.endsWith('}')) {
+                log.seek(lineStart)
+                break
+            }
+            logPosition = log.filePointer
+            val progress = parsePhotoRecProgress(line)
+            if (progress != null) onProgress(progress)
+        }
+    }
+    return logPosition
+}
+
+private fun parsePhotoRecProgress(line: String): PhotoRecProgress? {
+    if (line.isBlank()) return null
+    return try {
+        val event = JSONObject(line)
+        if (event.optString("type") != "progress") return null
+        val totalSectors = event.optLong("total_sectors")
+        if (totalSectors <= 0L) return null
+        val currentSector = event.optLong("current_sector").coerceIn(0L, totalSectors)
+        PhotoRecProgress(
+            percent = (currentSector.toDouble() / totalSectors * 100.0).toInt().coerceIn(0, 100),
+            filesFound = event.optLong("files_found").coerceAtLeast(0L),
+            estimatedTime = event.optString("estimated_time").takeUnless {
+                it.isBlank() || it == "null"
+            }
+        )
+    } catch (_: JSONException) {
+        null
+    }
+}
 
 private fun copyRecoveredFiles(context: Context, sourceDirectory: File, targetDirectory: Uri): Int {
     var copiedCount = 0
@@ -307,7 +465,7 @@ private fun copyRecoveredFiles(context: Context, sourceDirectory: File, targetDi
         val mimeType = if (source.isDirectory) {
             DocumentsContract.Document.MIME_TYPE_DIR
         } else {
-            "application/octet-stream"
+            recoveredFileMimeType(source)
         }
         val target = DocumentsContract.createDocument(
             context.contentResolver,
@@ -332,4 +490,18 @@ private fun queryDisplayName(contentResolver: ContentResolver, uri: Uri): String
     return contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0) else null
     }
+}
+
+private fun recoveredFileMimeType(file: File): String {
+    val extension = file.extension.lowercase()
+    return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+        ?: when (extension) {
+            "xls" -> "application/vnd.ms-excel"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "doc" -> "application/msword"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "ppt" -> "application/vnd.ms-powerpoint"
+            "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            else -> "application/octet-stream"
+        }
 }

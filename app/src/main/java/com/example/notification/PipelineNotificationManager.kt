@@ -10,11 +10,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.MainActivity
 import com.example.R
-import com.example.receiver.VpnActionReceiver
-import com.example.vpn.VpnGateManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
@@ -160,17 +155,6 @@ object PipelineNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Change Network / Rotate VPN PendingIntent
-        val rotateIntent = Intent(context, VpnActionReceiver::class.java).apply {
-            action = VpnActionReceiver.ACTION_ROTATE_VPN
-        }
-        val rotatePendingIntent = PendingIntent.getBroadcast(
-            context,
-            101,
-            rotateIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         val expandedText = buildString {
             append("⚡ Glitch Engine: $statusMessage\n")
             if (!category.isNullOrBlank()) {
@@ -195,7 +179,6 @@ object PipelineNotificationManager {
             .setOnlyAlertOnce(true)
             .setProgress(100, progressPercent, progressPercent <= 0)
             .setContentIntent(pendingIntent)
-            .addAction(R.drawable.ic_launcher_foreground, "🔄 CHANGE NETWORK", rotatePendingIntent)
             .setAutoCancel(false)
 
         try {
@@ -310,15 +293,6 @@ object PipelineNotificationManager {
     ) {
         createNotificationChannel(context)
 
-        // 🛡️ Trigger automatic VPN network failover on error
-        CoroutineScope(Dispatchers.Default).launch {
-            try {
-                VpnGateManager.switchToNextServer(context)
-            } catch (e: Exception) {
-                android.util.Log.w("NotificationManager", "Auto VPN switch on error failed: ${e.message}")
-            }
-        }
-
         try {
             val manager = NotificationManagerCompat.from(context)
             manager.cancel(PROGRESS_NOTIFICATION_ID)
@@ -334,39 +308,19 @@ object PipelineNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Change Network / Rotate VPN PendingIntent
-        val rotateIntent = Intent(context, VpnActionReceiver::class.java).apply {
-            action = VpnActionReceiver.ACTION_ROTATE_VPN
-        }
-        val rotatePendingIntent = PendingIntent.getBroadcast(
-            context,
-            102,
-            rotateIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val vpnState = VpnGateManager.status.value
-        val serverInfo = if (vpnState.currentServer != null) {
-            "${vpnState.currentServer.countryFlag} ${vpnState.currentServer.countryLong} (${vpnState.maskedIp})"
-        } else {
-            "Auto-Failover Gateway Active"
-        }
-
         val expandedText = buildString {
-            append("⚠️ GLITCH OS Alert: $errorMessage\n\n")
-            append("🛡️ GLITCH Auto-Shield: Network failover triggered ($serverInfo).\n")
-            append("Tap 'CHANGE NETWORK' to rotate to another high-speed VPN IP.")
+            append("Glitch OS: $errorMessage\n\n")
+            append("No VPN failover was performed. Retry on the current network or manage a compatible VPN app manually.")
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("🛡️ GLITCH AUTO-SHIELD: $title")
-            .setContentText("Network failover active ($serverInfo). Tap to rotate IP.")
+            .setContentTitle("Glitch OS: $title")
+            .setContentText(errorMessage)
             .setStyle(NotificationCompat.BigTextStyle().bigText(expandedText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(pendingIntent)
-            .addAction(R.drawable.ic_launcher_foreground, "🔄 CHANGE NETWORK", rotatePendingIntent)
             .setAutoCancel(true)
 
         try {

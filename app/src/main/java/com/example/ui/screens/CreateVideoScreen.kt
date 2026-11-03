@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -43,6 +44,7 @@ fun CreateVideoScreen(
 ) {
     val settings by viewModel.settingsFlow.collectAsState()
     val jobState by viewModel.createJobState.collectAsState()
+    val autoLoopState by viewModel.autoGenerationLoopState.collectAsState()
     var topic by remember { mutableStateOf("") }
     var language by remember(settings.defaultLanguage) { mutableStateOf(settings.defaultLanguage) }
     var category by remember(settings.defaultCategory) { mutableStateOf(settings.defaultCategory) }
@@ -50,6 +52,18 @@ fun CreateVideoScreen(
     var aspect by remember(settings.defaultAspect) { mutableStateOf(settings.defaultAspect) }
     var duration by remember(settings.defaultDuration) { mutableStateOf(settings.defaultDuration.toString()) }
     var captions by remember(settings.showCaptions) { mutableStateOf(settings.showCaptions) }
+    var enableAutoLoop by remember { mutableStateOf(false) }
+    var loopIntervalMinutes by remember { mutableStateOf("60") }
+
+    fun createRequest() = CreateJobRequest(
+        topic = topic.trim(),
+        language = language.trim().ifBlank { "Hindi" },
+        category = category.trim().ifBlank { "Technology" },
+        durationSec = duration.toIntOrNull()?.coerceIn(15, 300) ?: 60,
+        style = style.trim().ifBlank { "Cinematic" },
+        aspectRatio = aspect.trim().ifBlank { "9:16" },
+        showCaptions = captions
+    )
 
     Scaffold(
         topBar = {
@@ -105,7 +119,7 @@ fun CreateVideoScreen(
             OutlinedTextField(
                 value = duration,
                 onValueChange = { duration = it.filter(Char::isDigit) },
-                label = { Text("Duration in seconds") },
+                label = { Text("Duration in seconds (15–300)") },
                 modifier = Modifier.fillMaxWidth()
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -115,23 +129,86 @@ fun CreateVideoScreen(
             jobState.error?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
             Button(
                 onClick = {
-                    viewModel.createVideo(
-                        CreateJobRequest(
-                            topic = topic.trim(),
-                            language = language.trim().ifBlank { "Hindi" },
-                            category = category.trim().ifBlank { "Technology" },
-                            durationSec = duration.toIntOrNull()?.coerceIn(15, 600) ?: 60,
-                            style = style.trim().ifBlank { "Cinematic" },
-                            aspectRatio = aspect.trim().ifBlank { "9:16" },
-                            showCaptions = captions
-                        ),
-                        onNavigateToProgress
-                    )
+                    viewModel.createVideo(createRequest(), onNavigateToProgress)
                 },
                 enabled = !jobState.isSubmitting && topic.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().testTag("create_video_button")
             ) {
                 Text(if (jobState.isSubmitting) "Starting..." else "Generate video")
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = com.example.ui.theme.DarkSurface
+                )
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = enableAutoLoop || autoLoopState.isScheduled,
+                            onCheckedChange = { checked ->
+                                if (autoLoopState.isScheduled && !checked) {
+                                    viewModel.stopAutoGenerationLoop()
+                                    enableAutoLoop = false
+                                } else {
+                                    enableAutoLoop = checked
+                                }
+                            },
+                            enabled = !autoLoopState.isUpdating
+                        )
+                        Column {
+                            Text("Auto-generate in background", color = TextPrimary)
+                            Text(
+                                "Creates a new local video using this topic and category.",
+                                color = com.example.ui.theme.TextSecondary,
+                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    if (enableAutoLoop && !autoLoopState.isScheduled) {
+                        OutlinedTextField(
+                            value = loopIntervalMinutes,
+                            onValueChange = { loopIntervalMinutes = it.filter(Char::isDigit).take(4) },
+                            label = { Text("Interval in minutes (15–1440)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Text(
+                            "Android may delay runs for battery and background limits. Network and battery-not-low are required.",
+                            color = com.example.ui.theme.TextSecondary,
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                        )
+                        Button(
+                            onClick = {
+                                viewModel.startAutoGenerationLoop(
+                                    createRequest(),
+                                    loopIntervalMinutes.toIntOrNull() ?: 60
+                                )
+                            },
+                            enabled = topic.isNotBlank() &&
+                                !autoLoopState.isUpdating &&
+                                (loopIntervalMinutes.toIntOrNull() ?: 0) in 15..1440,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (autoLoopState.isUpdating) "Scheduling..." else "Start auto loop")
+                        }
+                    }
+
+                    if (autoLoopState.isScheduled) {
+                        Text(
+                            "Auto loop active: one video about every ${autoLoopState.intervalMinutes} minutes.",
+                            color = com.example.ui.theme.NeonGreen
+                        )
+                    }
+                    autoLoopState.error?.let {
+                        Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+                    }
+                }
             }
         }
     }

@@ -86,6 +86,11 @@
         </service>
 
         <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <service
             android:name="com.example.vpn.AdControlAccessibilityService"
             android:exported="true"
             android:label="Glitch OS Ad Controls"
