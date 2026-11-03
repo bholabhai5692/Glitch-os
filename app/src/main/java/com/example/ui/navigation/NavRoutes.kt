@@ -26,4 +26,6 @@ sealed class NavRoute(val route: String) {
     object CreatorAssistant : NavRoute("creator_assistant")
     object Location : NavRoute("location")
     object GlitchTube : NavRoute("glitch_tube")
+    object GpsCamera : NavRoute("gps_camera")
+    object VoiceRecorder : NavRoute("voice_recorder")
 }

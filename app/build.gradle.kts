@@ -24,8 +24,8 @@ android {
     applicationId = "com.aistudio.glitchv3.trdxk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 5
-    versionName = "1.4"
+    versionCode = 7
+    versionName = "1.6"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -86,6 +86,12 @@ dependencies {
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.camera.camera2)
+  implementation(libs.androidx.camera.lifecycle)
+  implementation(libs.androidx.camera.view)
+  implementation(libs.androidx.camera.core)
+  implementation(libs.androidx.exifinterface)
+  implementation(libs.play.services.location)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)

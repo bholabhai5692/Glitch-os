@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
@@ -16,6 +17,13 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.data.local.MusicTrackEntity
+
+data class GlitchTubePlaybackState(
+    val uri: String = "",
+    val title: String = "",
+    val isPlaying: Boolean = false
+)
 
 class GlitchTubePlaybackService : Service() {
     companion object {
@@ -24,23 +32,43 @@ class GlitchTubePlaybackService : Service() {
         private const val NOTIFICATION_ID = 5091
         private const val ACTION_PLAY = "com.example.media.PLAY"
         private const val ACTION_TOGGLE = "com.example.media.TOGGLE"
+        private const val ACTION_NEXT = "com.example.media.NEXT"
+        private const val ACTION_PREVIOUS = "com.example.media.PREVIOUS"
         private const val ACTION_STOP = "com.example.media.STOP"
         private const val EXTRA_URIS = "playlist_uris"
         private const val EXTRA_TITLES = "playlist_titles"
         private const val EXTRA_INDEX = "playlist_index"
+        private const val STATE_PREFERENCES = "glitch_tube_playback"
 
-        fun play(context: Context, uris: List<String>, titles: List<String>, index: Int) {
+        fun getPlaybackState(context: Context): GlitchTubePlaybackState {
+            val preferences = context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            return GlitchTubePlaybackState(
+                uri = preferences.getString("uri", "").orEmpty(),
+                title = preferences.getString("title", "").orEmpty(),
+                isPlaying = preferences.getBoolean("is_playing", false)
+            )
+        }
+
+        fun play(context: Context, tracks: List<MusicTrackEntity>, startIndex: Int) {
             val intent = Intent(context, GlitchTubePlaybackService::class.java).apply {
                 action = ACTION_PLAY
-                putStringArrayListExtra(EXTRA_URIS, ArrayList(uris))
-                putStringArrayListExtra(EXTRA_TITLES, ArrayList(titles))
-                putExtra(EXTRA_INDEX, index)
+                putStringArrayListExtra(EXTRA_URIS, ArrayList(tracks.map { it.uri }))
+                putStringArrayListExtra(EXTRA_TITLES, ArrayList(tracks.map { it.title }))
+                putExtra(EXTRA_INDEX, startIndex)
             }
             androidx.core.content.ContextCompat.startForegroundService(context, intent)
         }
 
         fun toggle(context: Context) {
             context.startService(Intent(context, GlitchTubePlaybackService::class.java).setAction(ACTION_TOGGLE))
+        }
+
+        fun next(context: Context) {
+            context.startService(Intent(context, GlitchTubePlaybackService::class.java).setAction(ACTION_NEXT))
+        }
+
+        fun previous(context: Context) {
+            context.startService(Intent(context, GlitchTubePlaybackService::class.java).setAction(ACTION_PREVIOUS))
         }
 
         fun stop(context: Context) {
@@ -53,9 +81,21 @@ class GlitchTubePlaybackService : Service() {
     private var playlistTitles: List<String> = emptyList()
     private var currentIndex = 0
     private var isPrepared = false
+    private lateinit var audioManager: AudioManager
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> player?.takeIf { it.isPlaying }?.pause()
+            AudioManager.AUDIOFOCUS_GAIN -> Unit
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> Unit
+        }
+        player?.let { persistPlaybackState(it.isPlaying) }
+        if (playlistUris.isNotEmpty()) updateNotification()
+    }
 
     override fun onCreate() {
         super.onCreate()
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
     }
 
@@ -80,8 +120,11 @@ class GlitchTubePlaybackService : Service() {
                 } else {
                     currentPlayer.start()
                 }
+                persistPlaybackState(currentPlayer.isPlaying)
                 updateNotification()
             }
+            ACTION_NEXT -> moveToTrack(currentIndex + 1)
+            ACTION_PREVIOUS -> moveToTrack(currentIndex - 1)
             ACTION_STOP -> {
                 stopPlayback()
                 stopSelf(startId)
@@ -94,7 +137,14 @@ class GlitchTubePlaybackService : Service() {
     private fun prepareTrack() {
         releasePlayer()
         val uri = playlistUris[currentIndex]
+        persistPlaybackState(isPlaying = false)
         try {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                audioFocusListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
             player = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
@@ -107,12 +157,12 @@ class GlitchTubePlaybackService : Service() {
                 setOnPreparedListener {
                     isPrepared = true
                     it.start()
+                    persistPlaybackState(isPlaying = true)
                     updateNotification()
                 }
                 setOnCompletionListener {
                     if (currentIndex + 1 < playlistUris.size) {
-                        currentIndex++
-                        prepareTrack()
+                        moveToTrack(currentIndex + 1)
                     } else {
                         stopPlayback()
                         stopSelf()
@@ -133,11 +183,23 @@ class GlitchTubePlaybackService : Service() {
         }
     }
 
+    private fun moveToTrack(index: Int) {
+        if (index !in playlistUris.indices) return
+        currentIndex = index
+        persistPlaybackState(isPlaying = false)
+        updateNotification()
+        prepareTrack()
+    }
+
     private fun stopPlayback() {
         releasePlayer()
         playlistUris = emptyList()
         playlistTitles = emptyList()
         currentIndex = 0
+        getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply()
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
@@ -152,11 +214,26 @@ class GlitchTubePlaybackService : Service() {
         }
         player = null
         isPrepared = false
+        if (::audioManager.isInitialized) {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(audioFocusListener)
+        }
     }
 
     private fun updateNotification() {
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, buildNotification(player?.isPlaying == true))
+    }
+
+    private fun persistPlaybackState(isPlaying: Boolean) {
+        val uri = playlistUris.getOrNull(currentIndex).orEmpty()
+        val title = playlistTitles.getOrNull(currentIndex).orEmpty()
+        getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putString("uri", uri)
+            .putString("title", title)
+            .putBoolean("is_playing", isPlaying)
+            .apply()
     }
 
     private fun buildNotification(isPlaying: Boolean): Notification {
@@ -191,6 +268,16 @@ class GlitchTubePlaybackService : Service() {
                 if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
                 if (isPlaying) "Pause" else "Resume",
                 toggleIntent
+            )
+            .addAction(
+                android.R.drawable.ic_media_next,
+                "Next",
+                PendingIntent.getService(
+                    this,
+                    4,
+                    Intent(this, GlitchTubePlaybackService::class.java).setAction(ACTION_NEXT),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
             )
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopIntent)
             .build()

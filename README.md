@@ -56,17 +56,34 @@ location permission when Android prompts for it.
 
 ## Glitch Tube and recovery
 
-**Glitch Tube** plays videos and music selected from the device. Audio continues
-in the background using a playback notification. Downloads accept direct HTTPS
-links to media files only, and the user must confirm they own the media or have
-permission to download it. Video-platform page extraction (including yt-dlp)
-is not included.
+**Glitch Tube** is a local music player. Songs selected from the device are
+indexed in the Room database on that device and can be filtered by album/artist
+category or Favorites. Tapping a song starts a queue from that category; next
+and previous tracks work in the player and notification. Audio continues in a
+media-playback foreground service when the screen is closed. The app does not
+download songs or extract media from websites.
 
 **Recover files** scans a raw disk image explicitly selected by the user and
 writes PhotoRec matches to a separate output folder. Android does not allow this
 app to scan protected internal storage directly. PhotoRec cannot always
 distinguish deleted file signatures from files still present in the selected
 image; the scan is read-only and does not change the source.
+
+## GPS Camera and Voice Recorder
+
+**GPS Camera** requests camera and location permission only when opened. Photos
+are saved in the app-private `Pictures/GlitchGPSCamera` folder, and the device's
+real location is written to EXIF when a GPS fix is available. Captions are saved
+as photo metadata; captured coordinates are not manually altered. Mock location
+fixes are rejected, and photos can still be taken without GPS metadata. The
+in-app gallery lists photos and their recorded coordinates.
+
+**Voice Recorder** is a user-started microphone recorder, not a phone-call
+recorder. It shows an on-screen recording state, reminds users to obtain
+everyone's consent, and saves, lists, plays, and deletes files in the separate
+app-private `Music/GlitchVoiceRecordings` folder. It does not record calls or
+run as a background call-monitoring service; an active recording is stopped
+when the app goes to the background.
 
 Map tiles come from the public OpenStreetMap tile service and include visible
 attribution. Its tile service is best-effort, not an unlimited or SLA-backed API.

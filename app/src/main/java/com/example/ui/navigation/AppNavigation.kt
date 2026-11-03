@@ -9,8 +9,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AdUnits
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
@@ -50,7 +52,9 @@ fun AppNavigation(viewModel: MainViewModel) {
                     onNavigateToCreatorAssistant = { navController.navigate(NavRoute.CreatorAssistant.route) },
                     onNavigateToLocation = { navController.navigate(NavRoute.Location.route) },
                     onNavigateToAdProtection = { navController.navigate(NavRoute.AdProtection.route) },
-                    onNavigateToGlitchTube = { navController.navigate(NavRoute.GlitchTube.route) }
+                    onNavigateToGlitchTube = { navController.navigate(NavRoute.GlitchTube.route) },
+                    onNavigateToGpsCamera = { navController.navigate(NavRoute.GpsCamera.route) },
+                    onNavigateToVoiceRecorder = { navController.navigate(NavRoute.VoiceRecorder.route) }
                 )
             }
             composable(NavRoute.Create.route) {
@@ -151,6 +155,12 @@ fun AppNavigation(viewModel: MainViewModel) {
             composable(NavRoute.GlitchTube.route) {
                 GlitchTubeScreen(onNavigateBack = { navController.popBackStack() })
             }
+            composable(NavRoute.GpsCamera.route) {
+                GpsCameraScreen(onNavigateBack = { navController.popBackStack() })
+            }
+            composable(NavRoute.VoiceRecorder.route) {
+                VoiceRecorderScreen(onNavigateBack = { navController.popBackStack() })
+            }
             composable(NavRoute.CreatorAssistant.route) {
                 ChatbotScreen(
                     viewModel = viewModel,
@@ -174,6 +184,8 @@ fun AppNavigation(viewModel: MainViewModel) {
                     AppToolDestination("Recover files", Icons.Default.Restore, NavRoute.Recovery.route),
                     AppToolDestination("Location", Icons.Default.Place, NavRoute.Location.route),
                     AppToolDestination("Glitch Tube", Icons.Default.VideoLibrary, NavRoute.GlitchTube.route),
+                    AppToolDestination("GPS Camera", Icons.Default.CameraAlt, NavRoute.GpsCamera.route),
+                    AppToolDestination("Voice Recorder", Icons.Default.Mic, NavRoute.VoiceRecorder.route),
                     AppToolDestination("Creator assistant", Icons.Default.AutoAwesome, NavRoute.CreatorAssistant.route),
                     AppToolDestination("Settings", Icons.Default.Settings, NavRoute.Settings.route),
                     AppToolDestination("Logs", Icons.Default.Article, NavRoute.Logs.route)

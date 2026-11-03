@@ -17,9 +17,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
@@ -76,7 +78,9 @@ fun HomeScreen(
     onNavigateToCreatorAssistant: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToAdProtection: () -> Unit,
-    onNavigateToGlitchTube: () -> Unit
+    onNavigateToGlitchTube: () -> Unit,
+    onNavigateToGpsCamera: () -> Unit,
+    onNavigateToVoiceRecorder: () -> Unit
 ) {
     val dashboard by viewModel.dashboardState.collectAsState()
 
@@ -218,6 +222,8 @@ fun HomeScreen(
             item { HomeAction("VPN profiles", "Review live profiles and limitations", Icons.Default.Settings, onNavigateToVpnShield) }
             item { HomeAction("Keyboard tools", "Customize your keyboard", Icons.Default.Keyboard, onNavigateToKeyboardPlayground) }
             item { HomeAction("Location", "View device location", Icons.Default.Place, onNavigateToLocation) }
+            item { HomeAction("GPS Camera", "Capture photos with real GPS metadata", Icons.Default.CameraAlt, onNavigateToGpsCamera, CyberCyan) }
+            item { HomeAction("Voice Recorder", "Record and play your own microphone recordings", Icons.Default.Mic, onNavigateToVoiceRecorder) }
             item { HomeAction("Recover files", "Scan a disk image you select", Icons.Default.Restore, onNavigateToRecovery) }
         }
     }
