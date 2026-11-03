@@ -54,6 +54,20 @@ requires this manual selection and exposes mock locations as mock data; this
 feature does not hide that status or bypass other apps' checks. Grant precise
 location permission when Android prompts for it.
 
+## Glitch Tube and recovery
+
+**Glitch Tube** plays videos and music selected from the device. Audio continues
+in the background using a playback notification. Downloads accept direct HTTPS
+links to media files only, and the user must confirm they own the media or have
+permission to download it. Video-platform page extraction (including yt-dlp)
+is not included.
+
+**Recover files** scans a raw disk image explicitly selected by the user and
+writes PhotoRec matches to a separate output folder. Android does not allow this
+app to scan protected internal storage directly. PhotoRec cannot always
+distinguish deleted file signatures from files still present in the selected
+image; the scan is read-only and does not change the source.
+
 Map tiles come from the public OpenStreetMap tile service and include visible
 attribution. Its tile service is best-effort, not an unlimited or SLA-backed API.
 See the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/).

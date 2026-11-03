@@ -25,4 +25,5 @@ sealed class NavRoute(val route: String) {
     object Recovery : NavRoute("recovery")
     object CreatorAssistant : NavRoute("creator_assistant")
     object Location : NavRoute("location")
+    object GlitchTube : NavRoute("glitch_tube")
 }

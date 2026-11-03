@@ -75,7 +75,8 @@ fun HomeScreen(
     onNavigateToRecovery: () -> Unit,
     onNavigateToCreatorAssistant: () -> Unit,
     onNavigateToLocation: () -> Unit,
-    onNavigateToAdProtection: () -> Unit
+    onNavigateToAdProtection: () -> Unit,
+    onNavigateToGlitchTube: () -> Unit
 ) {
     val dashboard by viewModel.dashboardState.collectAsState()
 
@@ -209,6 +210,7 @@ fun HomeScreen(
 
             item { SectionLabel("YOUR WORKSPACE", "Create, review, and manage projects") }
             item { HomeAction("Video library", "Your saved projects", Icons.Default.VideoLibrary, onNavigateToLibrary) }
+            item { HomeAction("Glitch Tube", "Play and manage your videos and music", Icons.Default.VideoLibrary, onNavigateToGlitchTube, CyberCyan) }
             item { HomeAction("Creator assistant", "Draft ideas and scripts", Icons.Default.AutoAwesome, onNavigateToCreatorAssistant) }
 
             item { SectionLabel("PRIVACY & UTILITIES", "Tools you control") }

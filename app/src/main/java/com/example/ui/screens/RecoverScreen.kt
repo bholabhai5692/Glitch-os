@@ -82,6 +82,7 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
     var isScanningNative by remember { mutableStateOf(false) }
     var isCancelling by remember { mutableStateOf(false) }
     var scanProgress by remember { mutableStateOf<PhotoRecProgress?>(null) }
+    var recoveredFiles by remember { mutableStateOf<List<String>>(emptyList()) }
     var status by remember { mutableStateOf("Choose a disk image and a folder for recovered files.") }
 
     val sourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -146,7 +147,7 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Select a raw disk image (for example .img or .dd), not a regular photo or document. The image is scanned read-only with all PhotoRec file signatures enabled. Recovered files are written to a separate folder.",
+            text = "Select a raw disk image (for example .img or .dd) and a separate output folder. The source is read-only and will not be changed. Android does not allow this app to scan protected phone storage directly. PhotoRec can find file signatures in the image, but cannot always tell deleted files from files that still exist.",
             color = TextSecondary,
             style = MaterialTheme.typography.bodyMedium
         )
@@ -177,13 +178,22 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
         Spacer(modifier = Modifier.height(12.dp))
         Button(
             onClick = {
-                val image = sourceUri ?: return@Button
-                val destination = destinationUri ?: return@Button
+                val image = sourceUri
+                if (image == null) {
+                    status = "Choose a raw disk image first. Android does not allow recovery scanning of protected phone storage directly."
+                    return@Button
+                }
+                val destination = destinationUri
+                if (destination == null) {
+                    status = "Choose a separate output folder before starting recovery. Do not select the source device or image."
+                    return@Button
+                }
                 coroutineScope.launch {
                     isRecovering = true
                     isScanningNative = false
                     isCancelling = false
                     scanProgress = null
+                    recoveredFiles = emptyList()
                     status = "Preparing image..."
                     try {
                         val result = withContext(Dispatchers.IO) {
@@ -210,15 +220,16 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
                                 }
                             )
                         }
+                        recoveredFiles = result.files
                         status = when {
-                            result.cancelled && result.recoveredFiles > 0 ->
-                                "Scan stopped. ${result.recoveredFiles} partial files were recovered and exported."
+                            result.cancelled && result.files.isNotEmpty() ->
+                                "Scan stopped. ${result.files.size} file signatures were exported to the selected folder."
                             result.cancelled ->
-                                "Scan stopped. No recoverable files were found before cancellation."
-                            result.recoveredFiles == 0 ->
-                            "Scan finished. No recoverable files were found."
+                                "Scan stopped before PhotoRec found any file signatures."
+                            result.files.isEmpty() ->
+                                "Scan finished. PhotoRec found no recognizable file signatures."
                             else ->
-                                "Scan finished. ${result.recoveredFiles} files recovered and exported."
+                                "Scan finished. ${result.files.size} file signatures were exported. Check the list below."
                         }
                     } catch (error: CancellationException) {
                         throw error
@@ -234,7 +245,7 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = sourceUri != null && destinationUri != null && !isRecovering,
+            enabled = !isRecovering,
             colors = ButtonDefaults.buttonColors(containerColor = DarkSurface)
         ) {
             if (isRecovering) {
@@ -282,10 +293,34 @@ fun RecoverScreen(onNavigateBack: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "Supports formats PhotoRec can identify, including common photos, video, audio, documents, and archives. Recovery depends on the selected image containing data that has not been overwritten. This cannot access Android's protected internal partitions, recover cloud-only files, or guarantee every deleted file; avoid saving recovered files to the source device.",
+            text = "PhotoRec scans only the raw image you select. It cannot safely determine whether each match was deleted or is still present in that image, and scanning this app does not change the source. It cannot access Android's protected internal partitions, recover cloud-only files, or guarantee every deleted file. Save results to a separate drive or folder.",
             color = TextSecondary,
             style = MaterialTheme.typography.bodySmall
         )
+        if (recoveredFiles.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "PhotoRec matches (${recoveredFiles.size})",
+                color = TextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            recoveredFiles.take(100).forEach { fileName ->
+                Text(
+                    text = fileName,
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 3.dp)
+                )
+            }
+            if (recoveredFiles.size > 100) {
+                Text(
+                    text = "Showing the first 100 names. All ${recoveredFiles.size} exported matches are in the selected output folder.",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
             }
         }
 }
@@ -297,7 +332,7 @@ private data class PhotoRecProgress(
 )
 
 private data class PhotoRecResult(
-    val recoveredFiles: Int,
+    val files: List<String>,
     val cancelled: Boolean
 )
 
@@ -369,7 +404,7 @@ private suspend fun runPhotoRec(
         }
 
         return PhotoRecResult(
-            recoveredFiles = copyRecoveredFiles(context, outputDirectory, exportDirectory),
+            files = copyRecoveredFiles(context, outputDirectory, exportDirectory),
             cancelled = cancelled
         )
     } finally {
@@ -459,8 +494,8 @@ private fun parsePhotoRecProgress(line: String): PhotoRecProgress? {
     }
 }
 
-private fun copyRecoveredFiles(context: Context, sourceDirectory: File, targetDirectory: Uri): Int {
-    var copiedCount = 0
+private fun copyRecoveredFiles(context: Context, sourceDirectory: File, targetDirectory: Uri): List<String> {
+    val copiedFiles = mutableListOf<String>()
     sourceDirectory.listFiles().orEmpty().forEach { source ->
         val mimeType = if (source.isDirectory) {
             DocumentsContract.Document.MIME_TYPE_DIR
@@ -475,15 +510,15 @@ private fun copyRecoveredFiles(context: Context, sourceDirectory: File, targetDi
         ) ?: throw IOException("Could not export ${source.name}.")
 
         if (source.isDirectory) {
-            copiedCount += copyRecoveredFiles(context, source, target)
+            copiedFiles += copyRecoveredFiles(context, source, target)
         } else {
             context.contentResolver.openOutputStream(target)?.use { output ->
                 source.inputStream().use { input -> input.copyTo(output) }
             } ?: throw IOException("Could not write ${source.name}.")
-            copiedCount++
+            copiedFiles += source.name
         }
     }
-    return copiedCount
+    return copiedFiles
 }
 
 private fun queryDisplayName(contentResolver: ContentResolver, uri: Uri): String? {

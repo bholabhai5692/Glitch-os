@@ -49,7 +49,8 @@ fun AppNavigation(viewModel: MainViewModel) {
                     onNavigateToRecovery = { navController.navigate(NavRoute.Recovery.route) },
                     onNavigateToCreatorAssistant = { navController.navigate(NavRoute.CreatorAssistant.route) },
                     onNavigateToLocation = { navController.navigate(NavRoute.Location.route) },
-                    onNavigateToAdProtection = { navController.navigate(NavRoute.AdProtection.route) }
+                    onNavigateToAdProtection = { navController.navigate(NavRoute.AdProtection.route) },
+                    onNavigateToGlitchTube = { navController.navigate(NavRoute.GlitchTube.route) }
                 )
             }
             composable(NavRoute.Create.route) {
@@ -147,6 +148,9 @@ fun AppNavigation(viewModel: MainViewModel) {
             composable(NavRoute.Location.route) {
                 LocationScreen(onNavigateBack = { navController.popBackStack() })
             }
+            composable(NavRoute.GlitchTube.route) {
+                GlitchTubeScreen(onNavigateBack = { navController.popBackStack() })
+            }
             composable(NavRoute.CreatorAssistant.route) {
                 ChatbotScreen(
                     viewModel = viewModel,
@@ -169,6 +173,7 @@ fun AppNavigation(viewModel: MainViewModel) {
                     AppToolDestination("Ad protection", Icons.Default.AdUnits, NavRoute.AdProtection.route),
                     AppToolDestination("Recover files", Icons.Default.Restore, NavRoute.Recovery.route),
                     AppToolDestination("Location", Icons.Default.Place, NavRoute.Location.route),
+                    AppToolDestination("Glitch Tube", Icons.Default.VideoLibrary, NavRoute.GlitchTube.route),
                     AppToolDestination("Creator assistant", Icons.Default.AutoAwesome, NavRoute.CreatorAssistant.route),
                     AppToolDestination("Settings", Icons.Default.Settings, NavRoute.Settings.route),
                     AppToolDestination("Logs", Icons.Default.Article, NavRoute.Logs.route)
