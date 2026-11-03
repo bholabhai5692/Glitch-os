@@ -1,46 +1,55 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.app.AppOpsManager
+import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -50,55 +59,97 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.location.LocationCoordinates
 import com.example.location.MockLocationController
+import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkSurface
+import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.TimeoutException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 private const val TAG = "LocationScreen"
-private const val INITIAL_LATITUDE = "28.6139"
-private const val INITIAL_LONGITUDE = "77.2090"
+private const val INITIAL_LATITUDE = 28.6139
+private const val INITIAL_LONGITUDE = 77.2090
+private const val LOCATION_TIMEOUT_MS = 20_000L
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     val mockLocationController = remember(context) { MockLocationController(context) }
     var latitude by remember { mutableStateOf(INITIAL_LATITUDE) }
     var longitude by remember { mutableStateOf(INITIAL_LONGITUDE) }
-    var isRunning by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
-    var showStopConfirmation by remember { mutableStateOf(false) }
+    var isRunning by remember { mutableStateOf(mockLocationController.isRunning) }
+    var mockAppSelected by remember { mutableStateOf(mockLocationController.isSelectedAsMockApp()) }
+    var developerOptionsEnabled by remember { mutableStateOf(isDeveloperOptionsEnabled(context)) }
+    var isLocating by remember { mutableStateOf(false) }
 
-    fun selectedCoordinates(): LocationCoordinates? {
-        val coordinates = LocationCoordinates.parse(latitude, longitude)
-        if (coordinates == null) {
-            statusMessage = "Enter a valid latitude (-90 to 90) and longitude (-180 to 180)."
-        }
-        return coordinates
+    fun showMessage(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }
 
     fun applySelectedLocation() {
-        val coordinates = selectedCoordinates() ?: return
+        val coordinates = LocationCoordinates(latitude, longitude)
         try {
-            if (isRunning) {
+            if (mockLocationController.isRunning) {
                 mockLocationController.update(coordinates)
             } else {
                 mockLocationController.start(coordinates)
-                isRunning = true
             }
-            statusMessage = "Mock location set to ${coordinates.latitude}, ${coordinates.longitude}."
+            isRunning = true
+            mockAppSelected = mockLocationController.isSelectedAsMockApp()
+            showMessage("Mock location set to ${coordinates.latitude}, ${coordinates.longitude}.")
         } catch (exception: SecurityException) {
-            statusMessage =
-                "Android blocked the mock provider. In Developer options, select Glitch OS as the mock location app, then try again."
-            Log.e(TAG, "Mock provider permission was denied.", exception)
+            mockAppSelected = false
+            showMessage("Select Glitch OS as the mock location app in Developer options first.")
+            Log.e(TAG, "Android denied the mock location provider.", exception)
         } catch (exception: IllegalArgumentException) {
-            statusMessage =
-                "Android rejected the mock provider. Re-select Glitch OS in Developer options and try again."
-            Log.e(TAG, "Android rejected the mock provider.", exception)
+            mockAppSelected = mockLocationController.isSelectedAsMockApp()
+            showMessage("Android rejected the mock provider. Re-select Glitch OS in Developer options.")
+            Log.e(TAG, "Android rejected the mock location provider.", exception)
         } catch (exception: IllegalStateException) {
-            statusMessage = exception.message ?: "The mock location provider is not ready."
-            Log.e(TAG, "Mock provider is not ready.", exception)
+            showMessage(exception.message ?: "The mock location provider is not ready.")
+            Log.e(TAG, "Mock location provider is not ready.", exception)
+        }
+    }
+
+    suspend fun moveToCurrentLocation() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            showMessage("Allow precise location to find your current position.")
+            return
+        }
+        isLocating = true
+        try {
+            val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
+                requestCurrentLocation(context)
+            }
+            if (location == null) {
+                showMessage("Could not get a location fix. Check that Location is turned on and try again.")
+            } else {
+                latitude = location.latitude
+                longitude = location.longitude
+            }
+        } catch (exception: SecurityException) {
+            showMessage("Allow precise location to find your current position.")
+            Log.e(TAG, "Android denied access to the current location.", exception)
+        } catch (exception: IllegalArgumentException) {
+            showMessage("No location provider is available. Turn on device Location and try again.")
+            Log.e(TAG, "No usable current-location provider is available.", exception)
+        } catch (exception: Exception) {
+            if (exception is CancellationException) throw exception
+            showMessage("Could not get the current location. Check device Location settings.")
+            Log.e(TAG, "Could not retrieve the current location.", exception)
+        } finally {
+            isLocating = false
         }
     }
 
@@ -106,128 +157,79 @@ fun LocationScreen(onNavigateBack: () -> Unit) {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
-            applySelectedLocation()
+            if (isLocating) {
+                scope.launch { moveToCurrentLocation() }
+            } else {
+                applySelectedLocation()
+            }
         } else {
-            statusMessage =
-                "Precise location permission is required for Android's mock-location provider."
+            isLocating = false
+            showMessage("Precise location permission is required for this action.")
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Location", color = TextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
+    DisposableEffect(lifecycleOwner, mockLocationController) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mockAppSelected = mockLocationController.isSelectedAsMockApp()
+                developerOptionsEnabled = isDeveloperOptionsEnabled(context)
+                isRunning = mockLocationController.isRunning
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (mockLocationController.isRunning) {
+                try {
+                    mockLocationController.stop()
+                } catch (exception: SecurityException) {
+                    Log.e(TAG, "Android denied cleanup of the mock location provider.", exception)
+                } catch (exception: IllegalArgumentException) {
+                    Log.e(TAG, "Android could not remove the mock location provider.", exception)
+                } catch (exception: IllegalStateException) {
+                    Log.e(TAG, "Could not clean up the mock location provider.", exception)
                 }
-            )
-        },
-        containerColor = DarkBackground
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LocationPickerMap(
+            latitude = latitude,
+            longitude = longitude,
+            onLocationSelected = { selectedLatitude, selectedLongitude ->
+                latitude = selectedLatitude
+                longitude = selectedLongitude
+            }
+        )
+
+        Surface(
+            modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+            shape = CircleShape,
+            color = DarkSurface.copy(alpha = 0.92f)
         ) {
-            Text(
-                "For app development and QA testing. Android marks these coordinates as a mock location; this tool does not hide that signal.",
-                color = TextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            IconButton(onClick = onNavigateBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = TextPrimary
+                )
+            }
+        }
 
-            LocationPickerMap(
-                latitude = LocationCoordinates.parse(latitude, longitude)?.latitude ?: 28.6139,
-                longitude = LocationCoordinates.parse(latitude, longitude)?.longitude ?: 77.2090,
-                onLocationSelected = { selectedLatitude, selectedLongitude ->
-                    latitude = "%.6f".format(java.util.Locale.US, selectedLatitude)
-                    longitude = "%.6f".format(java.util.Locale.US, selectedLongitude)
-                }
-            )
-            TextButton(
+        Surface(
+            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+            shape = CircleShape,
+            color = DarkSurface.copy(alpha = 0.92f)
+        ) {
+            IconButton(
                 onClick = {
-                    try {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://www.openstreetmap.org/copyright")
-                            )
-                        )
-                    } catch (exception: android.content.ActivityNotFoundException) {
-                        statusMessage = "Could not open the OpenStreetMap copyright page."
-                        Log.e(TAG, "No app is available to open the map attribution link.", exception)
-                    } catch (exception: SecurityException) {
-                        statusMessage = "Access to the OpenStreetMap copyright page was denied."
-                        Log.e(TAG, "Could not open the map attribution link.", exception)
-                    }
-                }
-            ) {
-                Text(
-                    "© OpenStreetMap contributors",
-                    color = TextSecondary,
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = latitude,
-                    onValueChange = { latitude = it },
-                    label = { Text("Latitude") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = longitude,
-                    onValueChange = { longitude = it },
-                    label = { Text("Longitude") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
-                )
-            }
-
-            Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("One-time setup", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Grant precise location permission, then open Developer options → Select mock location app → Glitch OS. Android requires you to choose the app yourself.",
-                        color = TextSecondary
-                    )
-                    Button(
-                        onClick = {
-                            try {
-                                context.startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-                            } catch (exception: android.content.ActivityNotFoundException) {
-                                statusMessage = "Could not open Developer options. Open Settings and enable them manually."
-                                Log.e(TAG, "Developer options activity is unavailable.", exception)
-                            } catch (exception: SecurityException) {
-                                statusMessage = "Could not open Developer options. Open Settings and enable them manually."
-                                Log.e(TAG, "Access to Developer options was denied.", exception)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                        PackageManager.PERMISSION_GRANTED
                     ) {
-                        Text("Open Developer options")
-                    }
-                }
-            }
-
-            Button(
-                onClick = {
-                    val hasFineLocation = ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                    if (hasFineLocation) {
-                        applySelectedLocation()
+                        scope.launch { moveToCurrentLocation() }
                     } else {
+                        isLocating = true
                         permissionLauncher.launch(
                             arrayOf(
                                 Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -236,75 +238,123 @@ fun LocationScreen(onNavigateBack: () -> Unit) {
                         )
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                enabled = !isLocating
             ) {
-                Text(if (isRunning) "Update mock location" else "Set mock location")
+                Icon(
+                    Icons.Default.MyLocation,
+                    contentDescription = "Go to current location",
+                    tint = if (isLocating) TextSecondary else CyberCyan
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (!mockAppSelected) {
+                OutlinedButton(
+                    onClick = {
+                        val action = if (developerOptionsEnabled) {
+                            Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS
+                        } else {
+                            Settings.ACTION_DEVICE_INFO_SETTINGS
+                        }
+                        try {
+                            context.startActivity(Intent(action))
+                            showMessage(
+                                if (developerOptionsEnabled) {
+                                    "In Developer options, choose Glitch OS under Select mock location app."
+                                } else {
+                                    "Open Build number and tap it 7 times to enable Developer options, then return here."
+                                }
+                            )
+                        } catch (exception: Exception) {
+                            showMessage("Could not open Settings. Open Settings and enable Developer options manually.")
+                            Log.e(TAG, "Could not open the required Android settings page.", exception)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = DarkSurface.copy(alpha = 0.94f),
+                        contentColor = TextPrimary
+                    )
+                ) {
+                    Text(
+                        if (developerOptionsEnabled) {
+                            "Set mock app in Developer options"
+                        } else {
+                            "Enable Developer options"
+                        }
+                    )
+                }
+            }
+
+            Button(
+                onClick = {
+                    if (mockAppSelected) {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                            PackageManager.PERMISSION_GRANTED
+                        ) {
+                            applySelectedLocation()
+                        } else {
+                            permissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                )
+                            )
+                        }
+                    } else {
+                        showMessage("Set Glitch OS as the mock location app before setting a location.")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CyberCyan,
+                    contentColor = DarkBackground
+                )
+            ) {
+                Icon(Icons.Default.LocationOn, contentDescription = null)
+                Text(if (isRunning) "Update location" else "Set location", modifier = Modifier.padding(start = 8.dp))
             }
 
             if (isRunning) {
-                Text("Mock location is active while this screen is open.", color = TextSecondary)
-                Button(
-                    onClick = { showStopConfirmation = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Stop mock location")
-                }
-            }
-
-            statusMessage?.let { message ->
-                Text(message, color = MaterialTheme.colorScheme.error)
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-    }
-
-    if (showStopConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showStopConfirmation = false },
-            title = { Text("Stop mock location?") },
-            text = { Text("Apps will stop receiving this test location.") },
-            confirmButton = {
-                TextButton(
+                OutlinedButton(
                     onClick = {
-                        showStopConfirmation = false
                         try {
                             mockLocationController.stop()
                             isRunning = false
-                            statusMessage = "Mock location stopped."
+                            showMessage("Mock location stopped.")
                         } catch (exception: SecurityException) {
-                            statusMessage = "Android did not allow the mock provider to stop. Re-select Glitch OS in Developer options."
-                            Log.e(TAG, "Could not stop mock provider.", exception)
+                            showMessage("Android denied stopping the mock provider.")
+                            Log.e(TAG, "Could not stop the mock provider.", exception)
                         } catch (exception: IllegalArgumentException) {
-                            statusMessage = "Android could not remove the mock provider. Restart the app and check Developer options."
-                            Log.e(TAG, "Could not remove mock provider.", exception)
+                            showMessage("Android could not remove the mock provider. Re-select Glitch OS in Developer options.")
+                            Log.e(TAG, "Could not remove the mock provider.", exception)
                         }
-                    }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = DarkSurface.copy(alpha = 0.94f),
+                        contentColor = TextPrimary
+                    )
                 ) {
-                    Text("Stop")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showStopConfirmation = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    DisposableEffect(mockLocationController) {
-        onDispose {
-            if (mockLocationController.isRunning) {
-                try {
-                    mockLocationController.stop()
-                } catch (exception: SecurityException) {
-                    Log.e(TAG, "Android denied cleanup of the mock location provider.", exception)
-                } catch (exception: IllegalArgumentException) {
-                    Log.e(TAG, "Android could not remove the mock location provider during cleanup.", exception)
-                } catch (exception: IllegalStateException) {
-                    Log.e(TAG, "Could not clean up mock location after leaving the screen.", exception)
+                    Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Stop mock location", modifier = Modifier.padding(start = 8.dp))
                 }
             }
         }
+
+        Text(
+            "© OpenStreetMap contributors",
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = if (isRunning) 190.dp else 140.dp),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall
+        )
     }
 }
 
@@ -323,7 +373,7 @@ private fun LocationPickerMap(
             okhttp3.OkHttpClient.Builder()
                 .addInterceptor { chain ->
                     val request = chain.request().newBuilder()
-                        .header("User-Agent", "GlitchOS/1.1 (+https://github.com/mafiyacoding001-beep/Glitch-os)")
+                        .header("User-Agent", "GlitchOS/1.2 (+https://github.com/bholabhai5692/Glitch-os)")
                         .build()
                     chain.proceed(request)
                 }
@@ -359,6 +409,14 @@ private fun LocationPickerMap(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            mapView.onStart()
+            started = true
+        }
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            mapView.onResume()
+            resumed = true
+        }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             if (resumed) mapView.onPause()
@@ -369,17 +427,13 @@ private fun LocationPickerMap(
 
     AndroidView(
         factory = { mapView },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(280.dp)
+        modifier = Modifier.fillMaxSize()
     )
 
     LaunchedEffect(mapView) {
         mapView.getMapAsync { map ->
             mapLibreMap = map
-            map.setStyle(
-                org.maplibre.android.maps.Style.Builder().fromJson(OSM_STYLE)
-            ) {
+            map.setStyle(org.maplibre.android.maps.Style.Builder().fromJson(OSM_STYLE)) {
                 map.addOnMapClickListener { point ->
                     latestOnLocationSelected(point.latitude, point.longitude)
                     true
@@ -392,7 +446,7 @@ private fun LocationPickerMap(
         val map = mapLibreMap ?: return@LaunchedEffect
         val position = org.maplibre.android.geometry.LatLng(latitude, longitude)
         map.animateCamera(
-            org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(position, 12.0)
+            org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(position, 15.0)
         )
         marker?.remove()
         marker = map.addMarker(
@@ -402,6 +456,58 @@ private fun LocationPickerMap(
         )
     }
 }
+
+private suspend fun requestCurrentLocation(context: Context): Location? =
+    suspendCancellableCoroutine { continuation ->
+        val locationManager = context.getSystemService(LocationManager::class.java)
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { provider -> locationManager.isProviderEnabled(provider) }
+        if (providers.isEmpty()) {
+            continuation.resume(null)
+            return@suspendCancellableCoroutine
+        }
+
+        val handler = Handler(Looper.getMainLooper())
+        lateinit var listener: LocationListener
+        fun finish(location: Location?) {
+            if (!continuation.isActive) return
+            handler.removeCallbacksAndMessages(null)
+            locationManager.removeUpdates(listener)
+            continuation.resume(location)
+        }
+        listener = LocationListener { location -> finish(location) }
+        val timeout = Runnable {
+            if (continuation.isActive) {
+                locationManager.removeUpdates(listener)
+                continuation.resumeWithException(TimeoutException("Timed out waiting for a location fix."))
+            }
+        }
+        continuation.invokeOnCancellation {
+            handler.removeCallbacks(timeout)
+            locationManager.removeUpdates(listener)
+        }
+        handler.postDelayed(timeout, LOCATION_TIMEOUT_MS)
+        try {
+            providers.forEach { provider ->
+                locationManager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+            }
+        } catch (exception: SecurityException) {
+            handler.removeCallbacks(timeout)
+            locationManager.removeUpdates(listener)
+            continuation.resumeWithException(exception)
+        } catch (exception: IllegalArgumentException) {
+            handler.removeCallbacks(timeout)
+            locationManager.removeUpdates(listener)
+            continuation.resumeWithException(exception)
+        }
+    }
+
+private fun isDeveloperOptionsEnabled(context: Context): Boolean =
+    Settings.Global.getInt(
+        context.contentResolver,
+        Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
+        0
+    ) == 1
 
 private val OSM_STYLE = """
     {

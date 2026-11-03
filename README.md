@@ -44,12 +44,15 @@ separate composer action; video options are available from the settings icon.
 
 ## Location testing tool
 
-The **Location** tool lets app developers and QA testers select a point on an
-OpenStreetMap map or enter coordinates, then explicitly set or stop an Android
-mock location. Grant precise location permission and manually select **Glitch OS**
-under **Developer options → Select mock location app**. Android exposes mock
-locations as mock data; this feature does not hide that status or bypass other
-apps' checks.
+The **Location** tool opens a full-screen OpenStreetMap picker. Tap the map to
+choose a point, use the location button to center on the device's current fix,
+then select **Set location** to provide that point as an Android mock location.
+If Developer options are not enabled, the setup button opens device information
+so you can enable them by tapping **Build number** seven times. Then select
+**Glitch OS** under **Developer options → Select mock location app**. Android
+requires this manual selection and exposes mock locations as mock data; this
+feature does not hide that status or bypass other apps' checks. Grant precise
+location permission when Android prompts for it.
 
 Map tiles come from the public OpenStreetMap tile service and include visible
 attribution. Its tile service is best-effort, not an unlimited or SLA-backed API.

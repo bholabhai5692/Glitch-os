@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ui.components.AppToolDestination
@@ -34,6 +35,7 @@ import com.example.ui.viewmodels.MainViewModel
 @Composable
 fun AppNavigation(viewModel: MainViewModel) {
     val navController = rememberNavController()
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(navController = navController, startDestination = NavRoute.Home.route) {
             composable(NavRoute.Home.route) {
@@ -156,31 +158,33 @@ fun AppNavigation(viewModel: MainViewModel) {
             }
         }
 
-        FloatingToolLauncher(
-            destinations = listOf(
-                AppToolDestination("Home", Icons.Default.Home, NavRoute.Home.route),
-                AppToolDestination("Create video", Icons.Default.VideoSettings, NavRoute.Create.route),
-                AppToolDestination("Video library", Icons.Default.VideoLibrary, NavRoute.Library.route),
-                AppToolDestination("Keyboard tools", Icons.Default.Keyboard, NavRoute.KeyboardPlayground.route),
-                AppToolDestination("VPN settings", Icons.Default.VpnKey, NavRoute.VpnShield.route),
-                AppToolDestination("Ad protection", Icons.Default.AdUnits, NavRoute.AdProtection.route),
-                AppToolDestination("Recover files", Icons.Default.Restore, NavRoute.Recovery.route),
-                AppToolDestination("Location", Icons.Default.Place, NavRoute.Location.route),
-                AppToolDestination("Creator assistant", Icons.Default.AutoAwesome, NavRoute.CreatorAssistant.route),
-                AppToolDestination("Settings", Icons.Default.Settings, NavRoute.Settings.route),
-                AppToolDestination("Logs", Icons.Default.Article, NavRoute.Logs.route)
-            ),
-            onNavigate = { route ->
-                navController.navigate(route) {
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(16.dp)
-        )
+        if (currentRoute != NavRoute.Location.route) {
+            FloatingToolLauncher(
+                destinations = listOf(
+                    AppToolDestination("Home", Icons.Default.Home, NavRoute.Home.route),
+                    AppToolDestination("Create video", Icons.Default.VideoSettings, NavRoute.Create.route),
+                    AppToolDestination("Video library", Icons.Default.VideoLibrary, NavRoute.Library.route),
+                    AppToolDestination("Keyboard tools", Icons.Default.Keyboard, NavRoute.KeyboardPlayground.route),
+                    AppToolDestination("VPN settings", Icons.Default.VpnKey, NavRoute.VpnShield.route),
+                    AppToolDestination("Ad protection", Icons.Default.AdUnits, NavRoute.AdProtection.route),
+                    AppToolDestination("Recover files", Icons.Default.Restore, NavRoute.Recovery.route),
+                    AppToolDestination("Location", Icons.Default.Place, NavRoute.Location.route),
+                    AppToolDestination("Creator assistant", Icons.Default.AutoAwesome, NavRoute.CreatorAssistant.route),
+                    AppToolDestination("Settings", Icons.Default.Settings, NavRoute.Settings.route),
+                    AppToolDestination("Logs", Icons.Default.Article, NavRoute.Logs.route)
+                ),
+                onNavigate = { route ->
+                    navController.navigate(route) {
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(16.dp)
+            )
+        }
     }
 }
